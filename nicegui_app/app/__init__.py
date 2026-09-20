@@ -1,0 +1,2 @@
+"""Aplikasi Sistem Manajemen Mahasiswa."""
+
