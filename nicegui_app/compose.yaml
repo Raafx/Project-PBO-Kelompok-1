@@ -1,0 +1,13 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/app/data
+    environment:
+      APP_DATABASE_PATH: /app/data/app.db
+      APP_RELOAD: "false"
+      APP_SHOW_BROWSER: "false"
+
