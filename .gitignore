@@ -1,4 +1,4 @@
-**/.venv/
+**/.venv*/
 **/__pycache__/
 *.py[cod]
 **/.pytest_cache/
@@ -8,3 +8,11 @@
 **/data/*.db
 **/data/*.db-*
 /admina-tailwind-nextjs-admin-dashboard-shadcn-2026-09-28-15-28-56-utc.zip
+/adminto-nextjs-16-admin-dashboard-template-2026-07-18-04-55-14-utc/
+/adminto-nextjs-16-admin-dashboard-template-2026-07-18-04-55-14-utc.zip
+/ekomart-ecommerce-html-template-rtl-2025-08-26-10-58-59-utc/
+/ekomart-ecommerce-html-template-rtl-2025-08-26-10-58-59-utc.zip
+/mymarket-deploy-*.tar.gz
+/deploy.zip
+/logo-app.png
+/back/backups/

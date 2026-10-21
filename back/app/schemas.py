@@ -9,10 +9,16 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 class PaymentMethod(StrEnum):
     cash = "cash"
     qris = "qris"
+    edc = "edc"
     debit = "debit"
     credit = "credit"
     wallet = "wallet"
     voucher = "voucher"
+
+
+class StockArea(StrEnum):
+    warehouse = "warehouse"
+    sales = "sales"
 
 
 class ProductRead(BaseModel):
@@ -23,12 +29,77 @@ class ProductRead(BaseModel):
     sku: str | None
     name: str
     category: str
+    brand: str | None
+    unit: str
+    unit_conversion: int
     location: str
+    image_url: str | None
     price: int
     cost_price: int
     stock: int
+    warehouse_stock: int
     reorder_level: int
     is_active: bool
+
+
+class ProductCreate(BaseModel):
+    barcode: str = Field(min_length=3, max_length=40)
+    sku: str | None = Field(default=None, max_length=40)
+    name: str = Field(min_length=2, max_length=180)
+    category: str = Field(min_length=2, max_length=80)
+    brand: str | None = Field(default=None, max_length=80)
+    unit: str = Field(default="pcs", min_length=1, max_length=30)
+    unit_conversion: int = Field(default=1, ge=1, le=1_000_000)
+    location: str = Field(min_length=2, max_length=80)
+    image_url: str | None = Field(default=None, max_length=255)
+    price: int = Field(ge=0, le=9_999_999_999_999)
+    cost_price: int = Field(ge=0, le=9_999_999_999_999)
+    reorder_level: int = Field(default=10, ge=0, le=1_000_000)
+    is_active: bool = True
+
+    @field_validator("barcode", "name", "category", "location")
+    @classmethod
+    def strip_required_product_text(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("Data produk tidak boleh kosong")
+        return cleaned
+
+    @field_validator("sku", "image_url", "brand")
+    @classmethod
+    def strip_optional_product_text(cls, value: str | None) -> str | None:
+        return value.strip() or None if value is not None else None
+
+
+class ProductUpdate(BaseModel):
+    barcode: str | None = Field(default=None, min_length=3, max_length=40)
+    sku: str | None = Field(default=None, max_length=40)
+    name: str | None = Field(default=None, min_length=2, max_length=180)
+    category: str | None = Field(default=None, min_length=2, max_length=80)
+    brand: str | None = Field(default=None, max_length=80)
+    unit: str | None = Field(default=None, min_length=1, max_length=30)
+    unit_conversion: int | None = Field(default=None, ge=1, le=1_000_000)
+    location: str | None = Field(default=None, min_length=2, max_length=80)
+    image_url: str | None = Field(default=None, max_length=255)
+    price: int | None = Field(default=None, ge=0, le=9_999_999_999_999)
+    cost_price: int | None = Field(default=None, ge=0, le=9_999_999_999_999)
+    reorder_level: int | None = Field(default=None, ge=0, le=1_000_000)
+    is_active: bool | None = None
+
+    @field_validator("barcode", "name", "category", "location")
+    @classmethod
+    def strip_product_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("Data produk tidak boleh kosong")
+        return cleaned
+
+    @field_validator("sku", "image_url", "brand")
+    @classmethod
+    def strip_optional_update_text(cls, value: str | None) -> str | None:
+        return value.strip() or None if value is not None else None
 
 
 class MemberRead(BaseModel):
@@ -55,13 +126,15 @@ class PaymentCreate(BaseModel):
     method: PaymentMethod
     received_amount: int | None = Field(default=None, ge=0, le=9_999_999_999_999)
     approval_code: str | None = Field(default=None, max_length=80)
+    card_type: str | None = Field(default=None, pattern="^(debit|credit)$")
+    card_number: str | None = Field(default=None, min_length=12, max_length=23)
     voucher_code: str | None = Field(default=None, max_length=40)
     confirmed: bool = False
 
 
 class SaleBaseCreate(BaseModel):
     store_code: str = Field(default="MY-001", min_length=1, max_length=20)
-    cashier_code: str = Field(default="KASIR03", min_length=1, max_length=30)
+    cashier_code: str = Field(min_length=1, max_length=30)
     member_phone: str | None = Field(default=None, max_length=24)
     items: list[SaleLineCreate] = Field(min_length=1, max_length=200)
 
@@ -93,6 +166,8 @@ class PaymentRead(BaseModel):
     received_amount: int | None
     change_amount: int | None
     approval_code: str | None
+    card_type: str | None
+    card_last4: str | None
     voucher_code: str | None
     status: str
 
@@ -112,6 +187,81 @@ class SaleRead(BaseModel):
     created_at: datetime
     items: list[SaleItemRead]
     payment: PaymentRead | None
+
+
+class LiveTransactionStatus(StrEnum):
+    ready = "ready"
+    shopping = "shopping"
+    payment = "payment"
+    processing = "processing"
+    completed = "completed"
+    held = "held"
+    cancelled = "cancelled"
+
+
+class LiveTransactionHeartbeat(BaseModel):
+    session_id: str = Field(min_length=36, max_length=36)
+    store_code: str = Field(default="MY-001", min_length=1, max_length=20)
+    cashier_code: str = Field(min_length=1, max_length=30)
+    status: LiveTransactionStatus
+    items: list[SaleLineCreate] = Field(default_factory=list, max_length=200)
+    payment_method: PaymentMethod | None = None
+    payment_ready: bool = False
+    member_phone: str | None = Field(default=None, max_length=24)
+    current_action: str = Field(default="Siap melayani", min_length=1, max_length=120)
+    transaction_no: str | None = Field(default=None, max_length=40)
+
+    @field_validator("session_id")
+    @classmethod
+    def validate_session_id(cls, value: str) -> str:
+        cleaned = value.strip().lower()
+        if len(cleaned.split("-")) != 5:
+            raise ValueError("Session ID tidak valid")
+        return cleaned
+
+    @field_validator("store_code", "cashier_code", "current_action")
+    @classmethod
+    def strip_live_text(cls, value: str) -> str:
+        return value.strip()
+
+
+class LiveCartItemRead(BaseModel):
+    barcode: str
+    name: str
+    quantity: int
+    unit_price: int
+    subtotal: int
+    image_url: str | None
+
+
+class LiveTransactionRead(BaseModel):
+    id: str
+    store_code: str
+    store_name: str
+    cashier_code: str
+    cashier_name: str
+    status: str
+    progress: int
+    item_count: int
+    unique_products: int
+    subtotal: int
+    total: int
+    payment_method: str | None
+    payment_ready: bool
+    member_name: str | None
+    current_action: str
+    transaction_no: str | None
+    started_at: datetime | None
+    completed_at: datetime | None
+    last_seen_at: datetime
+    online: bool
+    service_ready: bool
+    items: list[LiveCartItemRead]
+
+
+class LiveWorkflowSnapshot(BaseModel):
+    generated_at: datetime
+    sessions: list[LiveTransactionRead]
 
 
 class VoucherValidate(BaseModel):
@@ -159,10 +309,10 @@ class PurchaseOrderItemCreate(BaseModel):
     unit_cost: int | None = Field(default=None, ge=0, le=9_999_999_999_999)
 
 
-class PurchaseOrderCreate(BaseModel):
+class DirectPurchaseCreate(BaseModel):
     supplier_id: str = Field(min_length=36, max_length=36)
     store_code: str = Field(default="MY-001", min_length=1, max_length=20)
-    expected_date: date | None = None
+    purchase_date: date | None = None
     notes: str | None = Field(default=None, max_length=500)
     items: list[PurchaseOrderItemCreate] = Field(min_length=1, max_length=200)
 
@@ -185,6 +335,7 @@ class PurchaseOrderRead(BaseModel):
 
     id: str
     po_number: str
+    created_by_id: str | None
     status: str
     expected_date: date | None
     subtotal: int
@@ -196,18 +347,10 @@ class PurchaseOrderRead(BaseModel):
     items: list[PurchaseOrderItemRead]
 
 
-class ReceiveLine(BaseModel):
-    item_id: str = Field(min_length=36, max_length=36)
-    quantity: int = Field(ge=1, le=100_000)
-
-
-class ReceivePurchaseOrder(BaseModel):
-    items: list[ReceiveLine] = Field(default_factory=list, max_length=200)
-
-
 class StockAdjustmentCreate(BaseModel):
     product_id: str = Field(min_length=36, max_length=36)
     quantity_change: int = Field(ge=-100_000, le=100_000)
+    area: StockArea = StockArea.sales
     store_code: str = Field(default="MY-001", min_length=1, max_length=20)
     note: str = Field(min_length=3, max_length=255)
 
@@ -228,6 +371,9 @@ class StockItemRead(BaseModel):
     price: int
     cost_price: int
     stock: int
+    sales_stock: int
+    warehouse_stock: int
+    total_stock: int
     reorder_level: int
     stock_status: str
 
@@ -238,18 +384,45 @@ class StockMovementRead(BaseModel):
     id: str
     product_id: str
     movement_type: str
+    stock_area: str
     quantity_change: int
     balance_after: int
     unit_cost: int | None
     reference_type: str | None
     reference_id: str | None
+    created_by_id: str | None
     note: str | None
+    created_at: datetime
+
+
+class StockTransferCreate(BaseModel):
+    product_id: str = Field(min_length=36, max_length=36)
+    quantity: int = Field(ge=1, le=100_000)
+    from_area: StockArea = StockArea.warehouse
+    to_area: StockArea = StockArea.sales
+    store_code: str = Field(default="MY-001", min_length=1, max_length=20)
+    note: str | None = Field(default=None, max_length=255)
+
+
+class StockTransferRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    transfer_no: str
+    product_id: str
+    quantity: int
+    from_area: str
+    to_area: str
+    note: str | None
+    created_by_id: str | None
     created_at: datetime
 
 
 class AdminDashboardRead(BaseModel):
     product_count: int
     stock_units: int
+    warehouse_stock_units: int
+    sales_stock_units: int
     low_stock_count: int
     active_supplier_count: int
     open_purchase_order_count: int
@@ -257,6 +430,43 @@ class AdminDashboardRead(BaseModel):
     inventory_value: int
     low_stock_products: list[StockItemRead]
     recent_purchase_orders: list[PurchaseOrderRead]
+
+
+class RoleRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    code: str
+    name: str
+    is_system: bool
+    permissions: list[str]
+
+
+class RolePermissionsUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=80)
+    permissions: list[str] = Field(max_length=20)
+
+
+class StaffRead(BaseModel):
+    id: str
+    employee_code: str
+    full_name: str
+    is_active: bool
+    role_id: str | None
+    role_code: str | None
+    role_name: str | None
+
+
+class StaffRoleUpdate(BaseModel):
+    role_id: str = Field(min_length=36, max_length=36)
+
+
+class AccessProfileRead(BaseModel):
+    employee_code: str
+    full_name: str
+    role_code: str
+    role_name: str
+    permissions: list[str]
 
 
 class AdminSaleRead(BaseModel):
@@ -305,3 +515,45 @@ class AdminSalesReportRead(BaseModel):
     category_sales: list[ReportBreakdown]
     top_products: list[ReportTopProduct]
     recent_sales: list[AdminSaleRead]
+
+
+class CeoChatStatusRead(BaseModel):
+    configured: bool
+    model: str
+    project_name: str
+    project_number: str
+    context_source: str
+
+
+class CeoChatMessageRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    role: str
+    content: str
+    created_at: datetime
+
+
+class CeoChatConversationRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    title: str
+    updated_at: datetime
+    messages: list[CeoChatMessageRead]
+
+
+class CeoChatCreate(BaseModel):
+    title: str = Field(default="Percakapan baru", min_length=1, max_length=160)
+
+
+class CeoChatPrompt(BaseModel):
+    message: str = Field(min_length=1, max_length=2_000)
+
+    @field_validator("message")
+    @classmethod
+    def clean_message(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("Pesan tidak boleh kosong")
+        return cleaned

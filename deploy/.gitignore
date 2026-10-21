@@ -1,0 +1,4 @@
+.env.production
+backups/
+db-init/*.sql
+*.tar.gz

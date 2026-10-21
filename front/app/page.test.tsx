@@ -1,20 +1,58 @@
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import PosPage from "./page";
 import { shortcutRegistry } from "./shortcuts";
 
-function dispatchScannerBurst(target: HTMLElement, value: string, startAt = 1000) {
+function dispatchScannerBurst(
+  target: HTMLElement,
+  value: string,
+  startAt = 1000,
+) {
   act(() => {
     [...value, "Enter"].forEach((key, index) => {
-      const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
-      Object.defineProperty(event, "timeStamp", { value: startAt + index * 10 });
+      const event = new KeyboardEvent("keydown", {
+        key,
+        bubbles: true,
+        cancelable: true,
+      });
+      Object.defineProperty(event, "timeStamp", {
+        value: startAt + index * 10,
+      });
       target.dispatchEvent(event);
     });
   });
 }
 
 describe("alur keyboard POS", () => {
+  it("menampilkan produk langsung tanpa bar kategori", () => {
+    render(<PosPage />);
+
+    expect(screen.queryByText(/lihat semua kategori/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/kategori produk/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/tersinkronisasi/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/pos v4\.2/i)).not.toBeInTheDocument();
+  });
+
+  it("hanya menyediakan metode Tunai, QRIS, dan EDC", () => {
+    render(<PosPage />);
+    const paymentMethods = screen.getByRole("radiogroup", {
+      name: /metode pembayaran/i,
+    });
+
+    expect(within(paymentMethods).getAllByRole("radio")).toHaveLength(3);
+    expect(within(paymentMethods).getByRole("radio", { name: /tunai/i })).toBeInTheDocument();
+    expect(within(paymentMethods).getByRole("radio", { name: /qris/i })).toBeInTheDocument();
+    expect(within(paymentMethods).getByRole("radio", { name: /edc/i })).toBeInTheDocument();
+  });
+
   it("menempatkan enam tab stop utama dalam urutan transaksi", async () => {
     const user = userEvent.setup();
     render(<PosPage />);
@@ -24,13 +62,19 @@ describe("alur keyboard POS", () => {
     await user.tab();
     expect(screen.getByRole("grid", { name: /daftar produk/i })).toHaveFocus();
     await user.tab();
-    expect(screen.getByRole("textbox", { name: /nomor hp member/i })).toHaveFocus();
+    expect(
+      screen.getByRole("textbox", { name: /nomor hp member/i }),
+    ).toHaveFocus();
     await user.tab();
     expect(screen.getByRole("radio", { name: /tunai/i })).toHaveFocus();
     await user.tab();
-    expect(screen.getByRole("textbox", { name: /uang diterima/i })).toHaveFocus();
+    expect(
+      screen.getByRole("textbox", { name: /uang diterima/i }),
+    ).toHaveFocus();
     await user.tab();
-    expect(screen.getByRole("button", { name: /bayar \/ selesaikan/i })).toHaveFocus();
+    expect(
+      screen.getByRole("button", { name: /bayar \/ selesaikan/i }),
+    ).toHaveFocus();
   });
 
   it("memilih baris dengan panah dan mengatur qty lewat angka lalu Enter", () => {
@@ -39,11 +83,13 @@ describe("alur keyboard POS", () => {
     grid.focus();
 
     fireEvent.keyDown(grid, { key: "ArrowUp" });
-    const sunlightRow = screen.getByRole("row", { name: /Sunlight Pencuci Piring/i });
-    expect(sunlightRow).toHaveAttribute("aria-selected", "true");
+    const mandarinRow = screen.getByRole("row", {
+      name: /Jeruk Mandarin/i,
+    });
+    expect(mandarinRow).toHaveAttribute("aria-selected", "true");
     fireEvent.keyDown(grid, { key: "3" });
     fireEvent.keyDown(grid, { key: "Enter" });
-    expect(within(sunlightRow).getByText("3")).toBeInTheDocument();
+    expect(within(mandarinRow).getByText("3")).toBeInTheDocument();
   });
 
   it("menjalankan shortcut registry tanpa kombinasi browser yang dilarang", async () => {
@@ -51,23 +97,37 @@ describe("alur keyboard POS", () => {
     const scan = screen.getByRole("textbox", { name: /scan barcode/i });
 
     fireEvent.keyDown(scan, { key: "F2" });
-    expect(screen.getByRole("dialog", { name: /pilih produk/i })).toBeInTheDocument();
-    fireEvent.keyDown(screen.getByRole("dialog", { name: /pilih produk/i }), { key: "Escape" });
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: /pilih produk/i })).not.toBeInTheDocument());
+    expect(
+      screen.getByRole("dialog", { name: /pilih produk/i }),
+    ).toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole("dialog", { name: /pilih produk/i }), {
+      key: "Escape",
+    });
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: /pilih produk/i }),
+      ).not.toBeInTheDocument(),
+    );
 
     fireEvent.keyDown(scan, { key: "F4" });
-    expect(screen.getByRole("textbox", { name: /nomor hp member/i })).toHaveFocus();
-    expect(Object.values(shortcutRegistry).some((shortcut) => shortcut.label.startsWith("Alt+"))).toBe(false);
+    expect(
+      screen.getByRole("textbox", { name: /nomor hp member/i }),
+    ).toHaveFocus();
+    expect(
+      Object.values(shortcutRegistry).some((shortcut) =>
+        shortcut.label.startsWith("Alt+"),
+      ),
+    ).toBe(false);
   });
 
   it("menambahkan qty multiplier dari kolom scan", () => {
     render(<PosPage />);
     const scan = screen.getByRole("textbox", { name: /scan barcode/i });
 
-    fireEvent.change(scan, { target: { value: "3*8998866200224" } });
+    fireEvent.change(scan, { target: { value: "3*8997000400001" } });
     fireEvent.keyDown(scan, { key: "Enter" });
 
-    const row = screen.getByRole("row", { name: /Indomie Goreng Original/i });
+    const row = screen.getByRole("row", { name: /Nestle Cerelac/i });
     expect(within(row).getByText("7")).toBeInTheDocument();
   });
 
@@ -78,11 +138,17 @@ describe("alur keyboard POS", () => {
     cash.focus();
     expect(cash).toHaveValue("200.000");
 
-    dispatchScannerBurst(cash, "8991002101656");
+    dispatchScannerBurst(cash, "8997000400007");
 
-    expect(screen.getByRole("row", { name: /Kopi Kapal Api Special Mix/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("row", {
+        name: /Kellogg's Multigrain Chocos/i,
+      }),
+    ).toBeInTheDocument();
     expect(cash).toHaveValue("200.000");
-    expect(screen.queryByRole("dialog", { name: /transaksi berhasil/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("dialog", { name: /transaksi berhasil/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("Enter pada Uang diterima kosong membayar pas dengan kembalian Rp0", async () => {
@@ -91,39 +157,63 @@ describe("alur keyboard POS", () => {
     expect(cash).toHaveValue("");
 
     fireEvent.keyDown(cash, { key: "Enter" });
-    const receipt = await screen.findByRole("dialog", { name: /transaksi berhasil/i });
+    const receipt = await screen.findByRole("dialog", {
+      name: /transaksi berhasil/i,
+    });
     expect(within(receipt).getByText("Rp0")).toBeInTheDocument();
   });
 
   it("menyelesaikan QRIS tanpa mouse", async () => {
-    const user = userEvent.setup();
     render(<PosPage />);
     const scan = screen.getByRole("textbox", { name: /scan barcode/i });
 
     fireEvent.keyDown(scan, { key: "2", ctrlKey: true, shiftKey: true });
-    expect(screen.getByRole("radio", { name: /QRIS/i })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("radio", { name: /QRIS/i })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
     fireEvent.keyDown(document.activeElement!, { key: "F12" });
-    const confirm = screen.getByRole("button", { name: /konfirmasi diterima/i });
-    await waitFor(() => expect(confirm).toHaveFocus());
-    await user.keyboard("{Enter}");
-    await waitFor(() => expect(screen.getByRole("button", { name: /bayar \/ selesaikan/i })).toHaveFocus());
+    const approval = screen.getByRole("textbox", {
+      name: /nomor approval QRIS/i,
+    });
+    await waitFor(() => expect(approval).toHaveFocus());
+    fireEvent.change(approval, { target: { value: "QRIS12345" } });
+    fireEvent.keyDown(approval, { key: "Enter" });
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /bayar \/ selesaikan/i }),
+      ).toHaveFocus(),
+    );
     fireEvent.keyDown(document.activeElement!, { key: "F12" });
-    expect(await screen.findByRole("dialog", { name: /transaksi berhasil/i })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("dialog", { name: /transaksi berhasil/i }),
+    ).toBeInTheDocument();
   });
 
-  it("menyelesaikan Debit tanpa mouse", async () => {
+  it("menyelesaikan EDC Debit tanpa mouse", async () => {
     render(<PosPage />);
     const scan = screen.getByRole("textbox", { name: /scan barcode/i });
 
     fireEvent.keyDown(scan, { key: "3", ctrlKey: true, shiftKey: true });
     fireEvent.keyDown(document.activeElement!, { key: "F12" });
-    const approval = screen.getByRole("textbox", { name: /nomor approval EDC/i });
-    await waitFor(() => expect(approval).toHaveFocus());
+    const cardNumber = screen.getByLabelText(/nomor kartu EDC/i);
+    await waitFor(() => expect(cardNumber).toHaveFocus());
+    fireEvent.change(cardNumber, { target: { value: "4111111111111111" } });
+    const approval = screen.getByRole("textbox", {
+      name: /nomor approval EDC/i,
+    });
+    approval.focus();
     fireEvent.change(approval, { target: { value: "A12345" } });
     fireEvent.keyDown(approval, { key: "Enter" });
-    await waitFor(() => expect(screen.getByRole("button", { name: /bayar \/ selesaikan/i })).toHaveFocus());
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /bayar \/ selesaikan/i }),
+      ).toHaveFocus(),
+    );
     fireEvent.keyDown(document.activeElement!, { key: "F12" });
-    expect(await screen.findByRole("dialog", { name: /transaksi berhasil/i })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("dialog", { name: /transaksi berhasil/i }),
+    ).toBeInTheDocument();
   });
 
   it("menolak nominal lebih dari 13 digit", () => {
@@ -137,9 +227,11 @@ describe("alur keyboard POS", () => {
   it("meminta konfirmasi untuk nominal lebih dari sepuluh kali total", async () => {
     render(<PosPage />);
     const cash = screen.getByRole("textbox", { name: /uang diterima/i });
-    fireEvent.change(cash, { target: { value: "2000000" } });
+    fireEvent.change(cash, { target: { value: "10000000" } });
     fireEvent.keyDown(cash, { key: "Enter" });
 
-    expect(await screen.findByRole("dialog", { name: /konfirmasi nominal besar/i })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("dialog", { name: /konfirmasi nominal besar/i }),
+    ).toBeInTheDocument();
   });
 });

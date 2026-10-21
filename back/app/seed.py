@@ -4,82 +4,17 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
-from app.models import Cashier, Member, Product, Store, Supplier, Voucher
-
-PRODUCTS = [
-    ("8998866200224", "Indomie Goreng Original 85g", "Mi Instan", "Rak A-02", 3_500, 2_800, 64, 24),
-    (
-        "8886008101053",
-        "Aqua Air Mineral 600 ml",
-        "Minuman Ringan",
-        "Chiller 01",
-        4_000,
-        3_000,
-        48,
-        20,
-    ),
-    (
-        "8992753211118",
-        "Ultra Milk UHT Full Cream 1000 ml",
-        "Susu & Olahan",
-        "Rak C-04",
-        21_500,
-        18_000,
-        18,
-        8,
-    ),
-    (
-        "8991001101121",
-        "SilverQueen Cokelat Almond 58g",
-        "Cokelat & Snack",
-        "Front Desk",
-        18_900,
-        15_000,
-        12,
-        6,
-    ),
-    (
-        "8999999052028",
-        "Sunlight Pencuci Piring Jeruk Nipis 755 ml",
-        "Home Care",
-        "Rak D-01",
-        17_500,
-        14_200,
-        15,
-        8,
-    ),
-    (
-        "8993175112034",
-        "Beras Premium Rojolele Super 5 Kg",
-        "Sembako",
-        "Pallet P-01",
-        78_000,
-        69_000,
-        6,
-        8,
-    ),
-    (
-        "8991002101656",
-        "Kopi Kapal Api Special Mix 10 sachet",
-        "Kopi & Teh",
-        "Rak B-03",
-        16_800,
-        13_500,
-        9,
-        10,
-    ),
-    ("8997008340512", "Gulaku Premium 1 Kg", "Sembako", "Rak A-06", 18_400, 15_500, 20, 10),
-    (
-        "8993053710505",
-        "Paseo Smart Facial Tissue 250 sheets",
-        "Personal Care",
-        "Rak D-04",
-        23_900,
-        19_500,
-        7,
-        10,
-    ),
-]
+from app.ekomart_catalog import sync_ekomart_catalog
+from app.models import (
+    BusinessSetting,
+    Cashier,
+    Member,
+    Store,
+    Supplier,
+    Voucher,
+)
+from app.services.access import ensure_default_roles
+from app.services.operations import hash_secret
 
 SUPPLIERS = [
     ("SUP-001", "PT Nusantara Pangan", "Rina Kusuma", "0812-4400-1001", "order@nusantarapangan.id"),
@@ -89,13 +24,68 @@ SUPPLIERS = [
 
 
 def seed_database(session: Session) -> None:
+    roles = ensure_default_roles(session)
     store = session.scalar(select(Store).where(Store.code == "MY-001"))
     if store is None:
-        session.add(Store(code="MY-001", name="MYMARKET Samarinda Central"))
+        session.add(
+            Store(
+                code="MY-001",
+                name="MYMARKET Samarinda Central",
+                address="Samarinda, Kalimantan Timur",
+                logo_url="/logo-app.png",
+            )
+        )
+    else:
+        store.address = store.address or "Samarinda, Kalimantan Timur"
+        store.logo_url = "/logo-app.png"
 
     cashier = session.scalar(select(Cashier).where(Cashier.employee_code == "KASIR03"))
     if cashier is None:
-        session.add(Cashier(employee_code="KASIR03", full_name="Athasyahri"))
+        session.add(
+            Cashier(
+                employee_code="KASIR03",
+                full_name="Athasyahri",
+                email="athasyahri@mymarket.local",
+                password_hash=hash_secret("admin12345"),
+                pin_hash=hash_secret("123456"),
+                role="owner",
+                role_id=roles["OWNER"].id,
+            )
+        )
+    elif cashier.role_id is None:
+        cashier.role = "owner"
+        cashier.role_id = roles["OWNER"].id
+    if cashier is not None:
+        cashier.email = cashier.email or "athasyahri@mymarket.local"
+        cashier.password_hash = cashier.password_hash or hash_secret("admin12345")
+        cashier.pin_hash = cashier.pin_hash or hash_secret("123456")
+
+    admin = session.scalar(select(Cashier).where(Cashier.employee_code == "ADMIN"))
+    if admin is None:
+        admin = session.scalar(select(Cashier).where(Cashier.email == "admin@gmail.com"))
+    if admin is None:
+        session.add(
+            Cashier(
+                employee_code="ADMIN",
+                full_name="Administrator",
+                email="admin@gmail.com",
+                password_hash=hash_secret("password"),
+                pin_hash=hash_secret("123456"),
+                role="owner",
+                role_id=roles["OWNER"].id,
+                totp_required=True,
+                is_active=True,
+            )
+        )
+    else:
+        admin.full_name = admin.full_name or "Administrator"
+        admin.email = "admin@gmail.com"
+        admin.password_hash = admin.password_hash or hash_secret("password")
+        admin.pin_hash = admin.pin_hash or hash_secret("123456")
+        admin.role = "owner"
+        admin.role_id = roles["OWNER"].id
+        admin.totp_required = True
+        admin.is_active = True
 
     member = session.scalar(select(Member).where(Member.phone == "081255449011"))
     if member is None:
@@ -128,29 +118,29 @@ def seed_database(session: Session) -> None:
                 )
             )
 
-    for barcode, name, category, location, price, cost_price, stock, reorder_level in PRODUCTS:
-        product = session.scalar(select(Product).where(Product.barcode == barcode))
-        if product is None:
+    sync_ekomart_catalog(session)
+
+    default_settings = {
+        "payment.methods": ("payment", "Metode pembayaran", "cash,qris,edc"),
+        "tax.rate": ("tax", "PPN (%)", "0"),
+        "tax.included": ("tax", "Harga termasuk pajak", "true"),
+        "receipt.paper": ("receipt", "Ukuran kertas", "80"),
+        "receipt.footer": ("receipt", "Footer struk", "Terima kasih sudah belanja di MYMARKET"),
+        "branch.primary": ("branch", "Cabang utama", "MY-001"),
+    }
+    for key, (group_name, label, value) in default_settings.items():
+        setting = session.get(BusinessSetting, key)
+        if setting is None:
             session.add(
-                Product(
-                    barcode=barcode,
-                    name=name,
-                    category=category,
-                    location=location,
-                    price=price,
-                    cost_price=cost_price,
-                    stock=stock,
-                    reorder_level=reorder_level,
+                BusinessSetting(
+                    key=key,
+                    group_name=group_name,
+                    label=label,
+                    value=value,
                 )
             )
-        else:
-            product.name = name
-            product.category = category
-            product.location = location
-            product.price = price
-            product.cost_price = cost_price
-            product.reorder_level = reorder_level
-            product.is_active = True
+        elif key == "payment.methods":
+            setting.value = value
     session.commit()
 
 

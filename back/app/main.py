@@ -8,6 +8,9 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.api.admin import router as admin_router
+from app.api.ceo_chat import router as ceo_chat_router
+from app.api.live_transactions import router as live_transactions_router
+from app.api.operations import router as operations_router
 from app.api.routes import router
 from app.config import get_settings
 from app.database import get_db
@@ -25,11 +28,14 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Content-Type", "X-Idempotency-Key"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-Actor-Code", "X-Idempotency-Key"],
 )
 app.include_router(router, prefix=settings.api_prefix)
+app.include_router(operations_router, prefix=settings.api_prefix)
 app.include_router(admin_router, prefix=settings.api_prefix)
+app.include_router(ceo_chat_router, prefix=settings.api_prefix)
+app.include_router(live_transactions_router, prefix=settings.api_prefix)
 
 
 @app.get("/")

@@ -1,0 +1,23 @@
+Port 22
+AddressFamily any
+ListenAddress 0.0.0.0
+ListenAddress ::
+
+HostKey /etc/ssh/ssh_host_rsa_key
+HostKey /etc/ssh/ssh_host_ecdsa_key
+HostKey /etc/ssh/ssh_host_ed25519_key
+
+PermitRootLogin no
+PubkeyAuthentication yes
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+UsePAM yes
+AllowUsers mymarket
+AuthorizedKeysFile .ssh/authorized_keys
+
+X11Forwarding no
+AllowTcpForwarding no
+PermitTunnel no
+PrintMotd no
+AcceptEnv LANG LC_*
+Subsystem sftp internal-sftp

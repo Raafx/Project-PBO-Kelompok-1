@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
+from app.api.admin import Actor, require_permission
 from app.database import get_db
 from app.models import Member, Product, Sale, Voucher
 from app.schemas import (
@@ -19,8 +20,16 @@ from app.schemas import (
 )
 from app.services.sales import checkout, hold
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_permission("pos.access"))])
 DbSession = Annotated[Session, Depends(get_db)]
+
+
+def _ensure_own_cashier(actor: Actor, cashier_code: str) -> None:
+    if cashier_code.strip().upper() != actor.employee_code:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "Identitas kasir tidak sesuai dengan sesi login",
+        )
 
 
 @router.get("/products", response_model=list[ProductRead])
@@ -80,32 +89,44 @@ def validate_voucher(payload: VoucherValidate, session: DbSession) -> VoucherRes
 def create_checkout(
     payload: CheckoutCreate,
     session: DbSession,
+    actor: Actor,
     idempotency_key: Annotated[
         str | None, Header(alias="X-Idempotency-Key", max_length=128)
     ] = None,
 ) -> Sale:
+    _ensure_own_cashier(actor, payload.cashier_code)
     return checkout(session, payload, idempotency_key)
 
 
 @router.post("/sales/hold", response_model=SaleRead, status_code=status.HTTP_201_CREATED)
-def create_hold(payload: HoldCreate, session: DbSession) -> Sale:
+def create_hold(payload: HoldCreate, session: DbSession, actor: Actor) -> Sale:
+    _ensure_own_cashier(actor, payload.cashier_code)
     return hold(session, payload)
 
 
 @router.get("/sales/holds", response_model=list[SaleRead])
 def list_holds(
     session: DbSession,
+    actor: Actor,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> list[Sale]:
     statement = (
-        select(Sale).where(Sale.status == "held").order_by(Sale.created_at.desc()).limit(limit)
+        select(Sale)
+        .where(Sale.status == "held", Sale.cashier_id == actor.id)
+        .order_by(Sale.created_at.desc())
+        .limit(limit)
     )
     return list(session.scalars(statement).all())
 
 
 @router.get("/sales/{transaction_no}", response_model=SaleRead)
-def sale_detail(transaction_no: str, session: DbSession) -> Sale:
-    sale = session.scalar(select(Sale).where(Sale.transaction_no == transaction_no))
+def sale_detail(transaction_no: str, session: DbSession, actor: Actor) -> Sale:
+    sale = session.scalar(
+        select(Sale).where(
+            Sale.transaction_no == transaction_no,
+            Sale.cashier_id == actor.id,
+        )
+    )
     if sale is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Transaksi tidak ditemukan")
     return sale

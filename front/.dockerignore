@@ -1,6 +1,8 @@
 node_modules
 .next
-.git
+.env
+.env.local
 *.log
 *.tsbuildinfo
-README.md
+tests
+**/*.test.*

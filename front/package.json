@@ -11,10 +11,18 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@iconify/react": "^6.0.2",
+    "apexcharts": "^5.16.0",
+    "bootstrap": "^5.3.8",
     "lucide-react": "latest",
     "next": "16.3.6",
+    "qrcode.react": "^4.2.0",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-apexcharts": "^2.1.1",
+    "react-bootstrap": "^2.10.10",
+    "react-dom": "19.3.0",
+    "react-select": "^5.10.2",
+    "simplebar-react": "^3.3.2"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^7.0.1",
@@ -26,6 +34,7 @@
     "eslint": "latest",
     "eslint-config-next": "16.3.6",
     "jsdom": "^29.1.1",
+    "sass": "1.77.6",
     "typescript": "latest",
     "vitest": "^5.0.2"
   }

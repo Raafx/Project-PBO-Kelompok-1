@@ -6,6 +6,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.config import get_settings
 from app.database import Base, get_db
 from app.main import app
 from app.seed import seed_database
@@ -32,6 +33,12 @@ def client(session: Session) -> Generator[TestClient, None, None]:
         yield session
 
     app.dependency_overrides[get_db] = override_get_db
-    with TestClient(app) as test_client:
-        yield test_client
-    app.dependency_overrides.clear()
+    settings = get_settings()
+    previous_allow_dev_actor_header = settings.allow_dev_actor_header
+    settings.allow_dev_actor_header = True
+    try:
+        with TestClient(app, headers={"X-Actor-Code": "KASIR03"}) as test_client:
+            yield test_client
+    finally:
+        settings.allow_dev_actor_header = previous_allow_dev_actor_header
+        app.dependency_overrides.clear()

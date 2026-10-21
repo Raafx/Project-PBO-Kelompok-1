@@ -35,8 +35,34 @@ npm run dev
 Frontend berjalan di `http://localhost:3000`. File `front/.env.local` mengarahkan
 frontend ke `http://127.0.0.1:8000/api/v1`.
 
-- Halaman kasir: `http://localhost:3000`
+- Login dan pemilihan halaman berdasarkan role: `http://localhost:3000`
+- Halaman kasir: `http://localhost:3000/pos`
 - Halaman admin operasional: `http://localhost:3000/admin`
+- Login akun: `http://localhost:3000/login`
+- CEO Copilot: `http://localhost:3000/ceo-chat`
+
+Untuk data lokal hasil seed, akun awalnya adalah `KASIR03` dengan password
+`admin12345` dan PIN supervisor `123456`. Ganti password dan PIN dari menu
+**Pusat Operasional > Pengaturan** sebelum aplikasi dipakai di luar lingkungan lokal.
+
+Akun administrator memakai `admin@gmail.com` dengan password awal `password`.
+Pada login pertama, pindai QR menggunakan aplikasi Authenticator dan konfirmasikan
+kode 6 digit. Setelah terhubung, setiap login admin mewajibkan password dan TOTP.
+Akun demo kasir dapat masuk memakai `KASIR01`, `KASIR02`, atau `KASIR04` dengan
+password awal `kasir12345`, lalu otomatis diarahkan ke `/pos`.
+
+## CEO Copilot
+
+Chatbot CEO memakai Gemini melalui FastAPI. Masukkan API key milik project
+`projek-pbo` ke `GEMINI_API_KEY` di `back/.env`, lalu restart backend. Frontend tidak
+memerlukan dan tidak boleh menyimpan API key.
+
+Setiap pertanyaan diberi konteks aktual dari database MYMARKET dalam bentuk snapshot
+read-only: performa hari ini, bulan berjalan, bulan sebelumnya, tren 30 hari, produk,
+kategori, metode pembayaran, stok kritis, dan pembelian. Respons muncul secara
+streaming supaya terasa cepat, sedangkan percakapan disimpan di database dan dapat
+dibuka lagi dari riwayat chat. Akses awalnya hanya diberikan ke role Pemilik melalui
+permission `admin.ceo_chat`.
 
 ## Modul admin
 
@@ -45,29 +71,59 @@ filter report dari template Admina. Data contoh template tidak dipakai; seluruh 
 berasal dari database `kasir-pbo`.
 
 - **Ringkasan** — omzet, transaksi, laba kotor, stok, metode bayar, dan aktivitas terbaru.
+- **Transaksi Live** — status terminal kasir, kesiapan pelayanan, progress transaksi,
+  isi keranjang, metode bayar, dan heartbeat online/offline secara realtime.
+- **Master Produk** — katalog berfoto, pencarian, filter, tambah, edit, ekspor, dan nonaktifkan produk.
 - **Penjualan** — pencarian dan filter seluruh transaksi POS.
 - **Laporan** — rentang tanggal, tren omzet, produk/kategori terlaris, metode pembayaran,
   cetak, dan ekspor CSV.
-- **Persediaan** — stok aktual, batas minimum, harga pokok, dan koreksi stok.
-- **Pembelian** — purchase order, pengiriman PO, dan penerimaan parsial/penuh.
+- **Persediaan** — saldo gudang dan kasir, transfer antarlokasi, batas minimum, dan koreksi stok.
+- **Pembelian** — pencatatan pembelian langsung yang otomatis menambah stok gudang.
 - **Supplier** — direktori pemasok dan form pemasok baru.
+- **Role & akses** — pengaturan halaman yang boleh dibuka setiap role dan penempatan role petugas.
+- **Pusat Operasional** — shift dan laci kas, promo, kategori/satuan/merek, label barcode,
+  Excel produk, kartu stok, opname, kedaluwarsa, PO dan penerimaan, retur pembelian,
+  member/loyalty, piutang/hutang, pengeluaran, setoran, rekonsiliasi, laba rugi,
+  slow moving, pajak, profil toko, cabang, akun karyawan, audit log, dan backup JSON.
 - **POS** — akses langsung kembali ke halaman kasir.
+
+Di layar POS, tombol toko membuka shift dan pencatatan kas masuk/keluar. Tombol
+**Hold/Recall** menyimpan keranjang ke database, sedangkan tombol riwayat mendukung
+cetak ulang struk serta void dengan PIN supervisor. Penutupan shift membandingkan
+uang fisik dengan modal, penjualan tunai, kas masuk, dan kas keluar.
 
 Endpoint laporan utama tersedia pada `GET /api/v1/admin/reports/sales`, sedangkan
 riwayat transaksi tersedia pada `GET /api/v1/admin/sales`. Laporan akan otomatis
 bertambah setelah transaksi diselesaikan dari halaman POS.
 
-## Alur pengadaan admin
+## Alur stok admin
 
 1. Tambahkan atau pilih supplier.
-2. Buat purchase order berisi produk, jumlah, harga beli, dan estimasi tiba.
-3. Kirim PO agar status berubah dari `Draft` menjadi `Dipesan`.
-4. Saat barang datang, isi jumlah fisik yang diterima—termasuk penerimaan sebagian.
-5. Sistem otomatis menambah stok, menghitung harga pokok rata-rata, dan menyimpan
-   histori mutasi.
+2. Catat pembelian berisi tanggal, produk, jumlah, dan harga beli. Tidak ada tahap
+   pengajuan atau persetujuan supplier.
+3. Sistem langsung menambah stok gudang, menghitung harga pokok rata-rata bergerak,
+   serta menyimpan petugas dan histori mutasinya.
+4. Transfer jumlah yang diperlukan dari **Gudang** ke **Kasir** agar dapat dijual.
+5. Koreksi stok hanya dipakai untuk stok opname/rusak/selisih dan wajib memiliki alasan.
 
-Checkout kasir juga memeriksa ketersediaan produk, mengurangi stok, dan mencatat
-mutasi penjualan dalam transaksi database yang sama.
+Checkout hanya menggunakan stok Kasir. Seluruh pembelian, koreksi, transfer, dan
+penjualan dijalankan secara atomik serta tidak mengizinkan saldo negatif. Pencatatan
+pembelian memakai idempotency key sehingga retry jaringan tidak menggandakan stok.
+
+## Role bawaan
+
+| Role | Akses awal |
+| --- | --- |
+| Pemilik | Seluruh POS dan admin, termasuk pengaturan role |
+| Manajer | POS, ringkasan, transaksi live, master produk, penjualan, laporan, persediaan, pembelian, supplier |
+| Staf Gudang | Ringkasan, persediaan, pembelian, supplier |
+| Kasir | POS dan riwayat penjualan |
+
+Permission role selain Pemilik dapat diubah dari menu **Role & akses**. Backend tetap
+memeriksa permission pada setiap endpoint; menyembunyikan menu di frontend bukan satu-satunya
+lapisan pembatasan. Akses normal wajib memakai bearer token hasil login. Header aktor
+development dinonaktifkan secara default dan hanya tersedia bila flag frontend serta
+backend sengaja diaktifkan untuk pengujian internal.
 
 ## Database
 
@@ -76,20 +132,35 @@ Migrasi awal membuat tabel berikut:
 - `stores`, `cashiers`, dan `shifts` untuk operasional kasir;
 - `products`, `members`, `vouchers`, dan `suppliers` untuk data master;
 - `sales`, `sale_items`, dan `payments` untuk transaksi;
-- `purchase_orders` dan `purchase_order_items` untuk pembelian stok;
-- `stock_movements` untuk audit masuk/keluar persediaan;
+- `live_transactions` untuk snapshot workflow dan heartbeat terminal kasir;
+- `purchase_orders` dan `purchase_order_items` untuk catatan pembelian langsung;
+- `stock_movements` dan `stock_transfers` untuk audit gudang/kasir;
+- `cash_movements`, `stock_counts`, dan `product_batches` untuk laci kas, opname,
+  kartu stok, dan monitor kedaluwarsa;
+- `catalog_options` dan `promotions` untuk master kategori/satuan/merek serta diskon POS;
+- `finance_entries`, `sale_returns`, `business_settings`, dan `audit_logs` untuk
+  keuangan, retur/void, konfigurasi toko, dan jejak aktivitas;
+- `auth_sessions` dan `password_reset_tokens` untuk login dan pemulihan akun;
+- `roles` dan `role_permissions` untuk kontrol akses halaman;
 - `alembic_version` untuk versi skema.
 
 Semua nominal uang disimpan sebagai integer rupiah. Checkout menghitung ulang harga
 dari tabel `products`, tidak mempercayai harga dari browser, dan mendukung header
 `X-Idempotency-Key` agar retry jaringan tidak membuat transaksi ganda.
 
-Halaman admin saat ini ditujukan untuk lingkungan lokal/internal. Tambahkan autentikasi
-dan pembatasan role sebelum aplikasi dibuka ke jaringan publik.
+Login memakai bearer token dengan masa aktif 12 jam. Header internal `X-Actor-Code`
+tetap tersedia untuk development dan pengujian lokal.
 
 Konfigurasi rahasia berada di `back/.env` dan tidak masuk Git. Template tersedia di
 `back/.env.example`. Ganti password user database sebelum dipakai di jaringan atau
 production.
+
+Katalog aktif berisi seluruh 28 produk grocery eKomart lengkap dengan barcode, SKU,
+kategori, merek, satuan, lokasi, harga, stok, dan gambar dari paket template eKomart.
+Sinkronisasi katalog tanpa mengubah histori dapat dijalankan dengan
+`python -m app.ekomart_catalog` dari folder `back`. Untuk mengganti katalog sekaligus
+membangun ulang transaksi, pembelian, stok, dan data laporan demo, jalankan
+`python -m app.demo_seed --reset`; snapshot JSON database dibuat otomatis sebelum reset.
 
 ## Pemeriksaan
 
@@ -107,3 +178,16 @@ npm run build
 ```
 
 Daftar shortcut kasir dan catatan kiosk mode berada di `front/README.md`.
+
+## Deployment production
+
+Sesudah repository di-clone pada Debian yang dependensinya sudah disiapkan,
+seluruh instalasi production dapat dijalankan dengan satu script:
+
+```bash
+sudo bash deploy/setup-production.sh \
+  --domain mymarket.pbo.web.id \
+  --email admin@example.com
+```
+
+Petunjuk server image, update, HTTPS, dan reset data tersedia di `deploy/README.md`.

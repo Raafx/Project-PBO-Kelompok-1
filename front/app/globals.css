@@ -1,3 +1,5 @@
+@import url("https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&family=Public+Sans:ital,wght@0,100..900;1,100..900&display=swap");
+
 :root {
   --background: #f3f6f7;
   --surface: #ffffff;
@@ -35,14 +37,26 @@ body {
   margin: 0;
   background: var(--background);
   color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  font-family: "Public Sans", Arial, sans-serif;
   font-size: 13px;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 button,
-input {
+input,
+select,
+textarea {
   font: inherit;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: "Outfit", "Public Sans", Arial, sans-serif;
 }
 
 button {
@@ -117,7 +131,7 @@ kbd {
   min-height: 650px;
   overflow: hidden;
   display: grid;
-  grid-template-rows: 64px minmax(0, 1fr) 32px;
+  grid-template-rows: 64px minmax(0, 1fr);
 }
 
 .topbar {
@@ -156,6 +170,19 @@ kbd {
 
 .brand-block {
   gap: 11px;
+}
+
+.brand-logo-image {
+  width: 86px;
+  height: 50px;
+  flex: 0 0 auto;
+  object-fit: contain;
+}
+
+.auth-brand-logo {
+  width: 172px;
+  height: auto;
+  object-fit: contain;
 }
 
 .brand-mark {
@@ -1780,6 +1807,89 @@ kbd {
   font-size: 10px;
 }
 
+.dialog-form {
+  margin-top: 14px;
+  display: grid;
+  gap: 8px;
+  text-align: left;
+}
+
+.dialog-form label {
+  margin-top: 3px;
+  color: var(--text-secondary);
+  font-size: 9px;
+  font-weight: 750;
+}
+
+.dialog-form input,
+.dialog-form select,
+.dialog-form textarea {
+  width: 100%;
+  min-height: 39px;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f8fafb;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 10px;
+  outline: 0;
+}
+
+.dialog-form input:focus,
+.dialog-form select:focus,
+.dialog-form textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.transaction-history {
+  max-height: 42dvh;
+  margin-top: 14px;
+  overflow-y: auto;
+  text-align: left;
+}
+
+.transaction-history > div {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 5px 10px;
+}
+
+.transaction-history span,
+.transaction-history small {
+  display: block;
+}
+
+.transaction-history small {
+  margin-top: 3px;
+  color: var(--text-tertiary);
+  font-size: 8px;
+}
+
+.transaction-history > div > div {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 6px;
+}
+
+.transaction-history button {
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fff;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 8px;
+}
+
+.transaction-history .danger-text {
+  color: var(--danger);
+}
+
 .shortcut-list {
   max-height: 45dvh;
   margin-top: 14px;
@@ -1884,7 +1994,7 @@ kbd {
 
 @media (max-height: 820px) and (min-width: 1181px) {
   .app-shell {
-    grid-template-rows: 60px minmax(0, 1fr) 30px;
+    grid-template-rows: 60px minmax(0, 1fr);
   }
 
   .workspace {
@@ -1975,7 +2085,7 @@ kbd {
     height: auto;
     min-height: 100dvh;
     overflow: visible;
-    grid-template-rows: 64px auto 32px;
+    grid-template-rows: 64px auto;
   }
 
   .topbar {
@@ -2013,6 +2123,11 @@ kbd {
   .brand-mark {
     width: 38px;
     height: 38px;
+  }
+
+  .brand-logo-image {
+    width: 72px;
+    height: 50px;
   }
 
   .operator-line {
@@ -2159,4 +2274,118 @@ kbd {
     --line: #9da9ae;
     --line-strong: #68767d;
   }
+}
+
+/* Searchable dropdowns: Select2-style behavior without jQuery. */
+.mymarket-select2 {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  color: var(--text);
+  font: inherit;
+}
+
+.mymarket-select2.w-auto {
+  width: auto !important;
+  min-width: 190px;
+}
+
+.mymarket-select2__control {
+  min-height: 38px;
+  border: 1px solid var(--line, #dee2e6);
+  border-radius: 0.375rem;
+  background: var(--surface, #fff);
+  cursor: pointer;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.mymarket-select2__control:hover {
+  border-color: var(--line-strong, #b8c2cc);
+}
+
+.mymarket-select2__control--is-focused {
+  border-color: #86b7fe;
+  box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.15);
+}
+
+.mymarket-select2__control--is-disabled {
+  background: #e9ecef;
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
+.mymarket-select2__value-container {
+  gap: 2px;
+  padding: 0.375rem 0.75rem;
+}
+
+.mymarket-select2__single-value,
+.mymarket-select2__input-container {
+  color: inherit;
+  line-height: 1.5;
+}
+
+.mymarket-select2__placeholder {
+  color: #8a94a2;
+}
+
+.mymarket-select2__indicators {
+  color: #667085;
+}
+
+.mymarket-select2__indicator {
+  display: grid;
+  padding: 0 0.55rem;
+  place-items: center;
+}
+
+.mymarket-select2__indicator-separator {
+  width: 1px;
+  margin: 0.45rem 0;
+  background: var(--line, #dee2e6);
+}
+
+.mymarket-select2__menu-portal {
+  z-index: 1100;
+}
+
+.mymarket-select2__menu {
+  overflow: hidden;
+  margin-top: 4px;
+  border: 1px solid var(--line, #dee2e6);
+  border-radius: 0.5rem;
+  background: var(--surface, #fff);
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.16);
+}
+
+.mymarket-select2__menu-list {
+  max-height: 260px;
+  padding: 0.35rem;
+}
+
+.mymarket-select2__option {
+  padding: 0.55rem 0.7rem;
+  border-radius: 0.35rem;
+  cursor: pointer;
+}
+
+.mymarket-select2__option--is-focused {
+  background: var(--accent-soft, #edf4ff);
+}
+
+.mymarket-select2__option--is-selected {
+  background: var(--accent, #0d6efd);
+  color: #fff;
+}
+
+.mymarket-select2__option--is-disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+[data-bs-theme="dark"] .mymarket-select2__control,
+[data-bs-theme="dark"] .mymarket-select2__menu {
+  border-color: #374151;
+  background: #1f2937;
+  color: #f8fafc;
 }

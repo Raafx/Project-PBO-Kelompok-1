@@ -1,33 +1,56 @@
 from __future__ import annotations
 
+import argparse
+import json
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from math import ceil
+from pathlib import Path
 from random import Random
+from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from app.database import SessionLocal
+from app.database import Base, SessionLocal
+from app.ekomart_catalog import sync_ekomart_catalog
 from app.models import (
+    AccessRole,
+    AuditLog,
     Cashier,
+    CashMovement,
+    CatalogOption,
+    CeoChatMessage,
+    CeoChatSession,
+    FinanceEntry,
+    LiveTransaction,
     Member,
     Payment,
     Product,
+    ProductBatch,
+    Promotion,
     PurchaseOrder,
     PurchaseOrderItem,
     Sale,
     SaleItem,
+    SaleReturn,
+    Shift,
+    StockCount,
     StockMovement,
+    StockTransfer,
     Store,
     Supplier,
     new_id,
 )
 from app.seed import seed_database
+from app.services.operations import hash_secret
 
 DEMO_RANDOM_SEED = 20_261_001
 DEMO_NOTE = "Data demo historis MYMARKET"
+DEMO_WAREHOUSE_REFERENCE = "demo_warehouse_opening"
+DEMO_CASHIER_PASSWORD = "kasir12345"
+DEMO_CASHIER_PIN = "123456"
 LOCAL_TIMEZONE = timezone(timedelta(hours=8), name="Asia/Makassar")
 
 DEMO_CASHIERS = [
@@ -86,99 +109,6 @@ DEMO_SUPPLIERS = [
     ),
 ]
 
-DEMO_PRODUCTS = [
-    (
-        "8996001600260",
-        "Teh Pucuk Harum 350 ml",
-        "Minuman Ringan",
-        "Chiller 02",
-        5_000,
-        3_800,
-        52,
-        18,
-    ),
-    ("8992752123009", "Le Minerale 600 ml", "Minuman Ringan", "Chiller 01", 4_000, 2_900, 56, 20),
-    (
-        "8999999192250",
-        "Coca-Cola Original 390 ml",
-        "Minuman Ringan",
-        "Chiller 02",
-        7_500,
-        5_900,
-        34,
-        14,
-    ),
-    (
-        "8991001780883",
-        "Good Day Cappuccino 5 sachet",
-        "Kopi & Teh",
-        "Rak B-03",
-        11_500,
-        8_700,
-        22,
-        10,
-    ),
-    (
-        "089686010399",
-        "Chitato Sapi Panggang 68g",
-        "Cokelat & Snack",
-        "Rak B-01",
-        12_500,
-        9_800,
-        28,
-        12,
-    ),
-    ("8996001302027", "Roma Kelapa 300g", "Cokelat & Snack", "Rak B-02", 10_900, 8_400, 31, 12),
-    ("8998866200415", "Indomie Soto Mie 70g", "Mi Instan", "Rak A-02", 3_500, 2_750, 58, 24),
-    ("8997004300077", "Mie Sedaap Goreng 90g", "Mi Instan", "Rak A-03", 3_500, 2_700, 47, 20),
-    ("8992628020020", "Bimoli Minyak Goreng 2 L", "Sembako", "Rak A-05", 39_500, 35_500, 14, 8),
-    ("8993296101232", "Tepung Segitiga Biru 1 Kg", "Sembako", "Rak A-06", 14_000, 11_700, 24, 10),
-    ("8999999501014", "Telur Ayam Negeri 10 Butir", "Sembako", "Chiller 03", 28_000, 24_500, 18, 8),
-    ("8999999400010", "Rinso Molto Deterjen 770g", "Home Care", "Rak D-02", 24_500, 20_000, 17, 8),
-    ("8999999400027", "Molto Pewangi Blue 820 ml", "Home Care", "Rak D-02", 19_900, 16_000, 19, 8),
-    (
-        "8999999400034",
-        "Lifebuoy Sabun Cair 450 ml",
-        "Personal Care",
-        "Rak D-03",
-        31_500,
-        26_000,
-        13,
-        7,
-    ),
-    (
-        "8999999400041",
-        "Pepsodent Pencegah Gigi Berlubang 190g",
-        "Personal Care",
-        "Rak D-03",
-        16_500,
-        13_200,
-        21,
-        9,
-    ),
-    ("8999999400058", "Kecap Manis ABC 520 ml", "Bumbu & Saus", "Rak A-08", 22_500, 18_500, 16, 8),
-    (
-        "8999999400065",
-        "Saus Sambal Indofood 335 ml",
-        "Bumbu & Saus",
-        "Rak A-08",
-        13_900,
-        10_900,
-        20,
-        8,
-    ),
-    (
-        "8999999400072",
-        "Bear Brand Susu Steril 189 ml",
-        "Susu & Olahan",
-        "Chiller 03",
-        12_000,
-        9_800,
-        26,
-        12,
-    ),
-]
-
 SUPPLIER_ADDRESSES = {
     "SUP-001": "Jl. Soekarno Hatta KM 5, Samarinda",
     "SUP-002": "Jl. Cendana No. 42, Samarinda",
@@ -186,13 +116,22 @@ SUPPLIER_ADDRESSES = {
 }
 
 SUPPLIER_BY_CATEGORY = {
-    "Minuman Ringan": "SUP-002",
+    "Makanan Bayi": "SUP-001",
+    "Susu Formula": "SUP-001",
     "Susu & Olahan": "SUP-002",
-    "Home Care": "SUP-004",
-    "Personal Care": "SUP-004",
-    "Sembako": "SUP-005",
-    "Bumbu & Saus": "SUP-005",
-    "Cokelat & Snack": "SUP-006",
+    "Minuman": "SUP-002",
+    "Minuman Protein": "SUP-002",
+    "Buah & Sayur": "SUP-003",
+    "Makanan Beku": "SUP-003",
+    "Daging Olahan": "SUP-003",
+    "Perawatan Hewan": "SUP-004",
+    "Bahan Kue": "SUP-005",
+    "Saus & Bumbu": "SUP-005",
+    "Pasta & Beras": "SUP-005",
+    "Sarapan & Sereal": "SUP-006",
+    "Kacang & Camilan": "SUP-006",
+    "Biskuit & Kerupuk": "SUP-006",
+    "Keripik": "SUP-006",
 }
 
 
@@ -223,9 +162,9 @@ def _weighted_products(rng: Random, products: list[Product], count: int) -> list
     while remaining and len(selected) < count:
         weights = [
             3.0
-            if product.category in {"Minuman Ringan", "Mi Instan", "Cokelat & Snack"}
+            if product.category in {"Minuman", "Biskuit & Kerupuk", "Keripik"}
             else 2.0
-            if product.category in {"Sembako", "Kopi & Teh"}
+            if product.category in {"Buah & Sayur", "Sarapan & Sereal", "Susu & Olahan"}
             else 1.0
             for product in remaining
         ]
@@ -279,19 +218,31 @@ def _seed_master_data(
     if store is None:
         raise RuntimeError("Store MY-001 tidak tersedia")
     store.created_at = foundation_date
+    roles = {role.code: role for role in session.scalars(select(AccessRole)).all()}
 
     for employee_code, full_name in DEMO_CASHIERS:
-        if session.scalar(select(Cashier).where(Cashier.employee_code == employee_code)) is None:
+        cashier = session.scalar(select(Cashier).where(Cashier.employee_code == employee_code))
+        if cashier is None:
             session.add(
                 Cashier(
                     employee_code=employee_code,
                     full_name=full_name,
                     role="cashier",
+                    role_id=roles["CASHIER"].id,
+                    password_hash=hash_secret(DEMO_CASHIER_PASSWORD),
+                    pin_hash=hash_secret(DEMO_CASHIER_PIN),
+                    totp_required=False,
                     is_active=True,
                     created_at=foundation_date,
                     updated_at=foundation_date,
                 )
             )
+        else:
+            cashier.totp_required = False
+            cashier.password_hash = cashier.password_hash or hash_secret(
+                DEMO_CASHIER_PASSWORD
+            )
+            cashier.pin_hash = cashier.pin_hash or hash_secret(DEMO_CASHIER_PIN)
 
     for phone, full_name, tier, points in DEMO_MEMBERS:
         if session.scalar(select(Member).where(Member.phone == phone)) is None:
@@ -317,25 +268,6 @@ def _seed_master_data(
                     phone=phone,
                     email=email,
                     address=address,
-                    is_active=True,
-                    created_at=foundation_date,
-                    updated_at=foundation_date,
-                )
-            )
-
-    for barcode, name, category, location, price, cost, stock, reorder in DEMO_PRODUCTS:
-        if session.scalar(select(Product).where(Product.barcode == barcode)) is None:
-            session.add(
-                Product(
-                    barcode=barcode,
-                    sku=f"SKU-{barcode[-6:]}",
-                    name=name,
-                    category=category,
-                    location=location,
-                    price=price,
-                    cost_price=cost,
-                    stock=stock,
-                    reorder_level=reorder,
                     is_active=True,
                     created_at=foundation_date,
                     updated_at=foundation_date,
@@ -736,18 +668,137 @@ def _write_stock_ledger(
     return movement_count
 
 
-def seed_demo_history(session: Session) -> dict[str, int | str]:
+def _seed_warehouse_balances(
+    session: Session,
+    store: Store,
+    products: list[Product],
+    actor: Cashier,
+    occurred_at: datetime,
+) -> int:
+    existing = session.scalar(
+        select(StockMovement.id).where(StockMovement.reference_type == DEMO_WAREHOUSE_REFERENCE)
+    )
+    if existing is not None:
+        return 0
+
+    total_units = 0
+    for product in products:
+        quantity = max(product.reorder_level * 2, 12)
+        product.warehouse_stock += quantity
+        total_units += quantity
+        session.add(
+            StockMovement(
+                id=new_id(),
+                product_id=product.id,
+                store_id=store.id,
+                movement_type="adjustment",
+                stock_area="warehouse",
+                quantity_change=quantity,
+                balance_after=product.warehouse_stock,
+                unit_cost=product.cost_price,
+                reference_type=DEMO_WAREHOUSE_REFERENCE,
+                created_by_id=actor.id,
+                note="Saldo awal gudang untuk data demo",
+                created_at=occurred_at,
+            )
+        )
+    return total_units
+
+
+def _json_value(value: Any) -> Any:
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()
+    if isinstance(value, bytes):
+        return value.hex()
+    return value
+
+
+def backup_database(session: Session, output_path: Path) -> Path:
+    """Simpan snapshot seluruh tabel aplikasi sebelum reset data operasional."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    tables: dict[str, list[dict[str, Any]]] = {}
+    for table in Base.metadata.sorted_tables:
+        rows = session.execute(select(table)).mappings().all()
+        tables[table.name] = [
+            {key: _json_value(value) for key, value in row.items()} for row in rows
+        ]
+    payload = {
+        "generated_at": datetime.now(LOCAL_TIMEZONE).isoformat(),
+        "format": "mymarket-full-table-backup-v1",
+        "tables": tables,
+    }
+    output_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return output_path
+
+
+def reset_operational_data(session: Session) -> None:
+    """Hapus data katalog/transaksi lama lalu siapkan ulang katalog eKomart."""
+    deletion_order = (
+        CeoChatMessage,
+        CeoChatSession,
+        LiveTransaction,
+        SaleReturn,
+        Payment,
+        SaleItem,
+        Sale,
+        PurchaseOrderItem,
+        PurchaseOrder,
+        StockMovement,
+        StockTransfer,
+        StockCount,
+        ProductBatch,
+        Promotion,
+        FinanceEntry,
+        CashMovement,
+        Shift,
+        AuditLog,
+        CatalogOption,
+        Product,
+    )
+    for model in deletion_order:
+        session.execute(delete(model))
+    session.flush()
+    sync_ekomart_catalog(session, archive_others=False)
+    session.flush()
+
+
+def seed_demo_history(
+    session: Session,
+    *,
+    reset: bool = False,
+    backup_path: Path | None = None,
+) -> dict[str, int | str]:
+    backup_result: Path | None = None
+    if reset:
+        if backup_path is not None:
+            backup_result = backup_database(session, backup_path)
+        reset_operational_data(session)
+        session.commit()
+
     now = datetime.now(LOCAL_TIMEZONE).replace(tzinfo=None, microsecond=0)
     history_end = now.date() - timedelta(days=1)
     history_start = history_end - timedelta(days=364)
     sentinel = f"DMY-{history_start:%Y%m%d}-0001"
     existing = session.scalar(select(Sale.id).where(Sale.transaction_no == sentinel))
     if existing is not None:
+        store = session.scalar(select(Store).where(Store.code == "MY-001"))
+        actor = session.scalar(select(Cashier).where(Cashier.employee_code == "KASIR03"))
+        products = list(session.scalars(select(Product).where(Product.is_active.is_(True))))
+        warehouse_units = 0
+        if store is not None and actor is not None:
+            warehouse_units = _seed_warehouse_balances(
+                session, store, products, actor, now - timedelta(hours=2)
+            )
+        session.commit()
         return {
             "status": "sudah_ada",
             "sales": int(session.scalar(select(func.count(Sale.id))) or 0),
             "purchase_orders": int(session.scalar(select(func.count(PurchaseOrder.id))) or 0),
             "stock_movements": int(session.scalar(select(func.count(StockMovement.id))) or 0),
+            "warehouse_units_added": warehouse_units,
         }
 
     rng = Random(DEMO_RANDOM_SEED)
@@ -773,7 +824,7 @@ def seed_demo_history(session: Session) -> dict[str, int | str]:
         history_start,
         history_end,
     )
-    open_order_count = _seed_open_orders(session, store, products, suppliers, now)
+    open_order_count = 0
     hold_count = _seed_recent_holds(session, rng, store, cashiers[0], members, products, now)
     movement_count = _write_stock_ledger(
         session,
@@ -784,24 +835,57 @@ def seed_demo_history(session: Session) -> dict[str, int | str]:
         foundation_date,
         datetime.combine(history_end, time(hour=22, minute=30)),
     )
+    actor = session.scalar(select(Cashier).where(Cashier.employee_code == "KASIR03"))
+    warehouse_units = (
+        _seed_warehouse_balances(session, store, products, actor, now - timedelta(hours=2))
+        if actor is not None
+        else 0
+    )
     session.commit()
-    return {
+    result: dict[str, int | str] = {
         "status": "dibuat",
         "period": f"{history_start.isoformat()} s.d. {history_end.isoformat()}",
         "sales": sale_count + hold_count,
         "purchase_orders": order_count + open_order_count,
         "stock_movements": movement_count,
+        "warehouse_units_added": warehouse_units,
         "products": len(products),
         "cashiers": len(cashiers),
         "members": len(members),
         "suppliers": len(suppliers),
     }
+    if backup_result is not None:
+        result["backup"] = str(backup_result)
+    return result
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Isi histori demo MYMARKET")
+    parser.add_argument(
+        "--reset",
+        action="store_true",
+        help="ganti katalog dan seluruh data operasional dengan data eKomart",
+    )
+    parser.add_argument(
+        "--no-backup",
+        action="store_true",
+        help="jangan buat backup JSON sebelum reset",
+    )
+    args = parser.parse_args()
+
+    backup_path = None
+    if args.reset and not args.no_backup:
+        timestamp = datetime.now(LOCAL_TIMEZONE).strftime("%Y%m%d-%H%M%S")
+        backup_path = Path(__file__).resolve().parents[1] / "backups" / (
+            f"pre-ekomart-{timestamp}.json"
+        )
+
     with SessionLocal() as session:
+        backup_result = backup_database(session, backup_path) if backup_path is not None else None
         seed_database(session)
-        result = seed_demo_history(session)
+        result = seed_demo_history(session, reset=args.reset)
+        if backup_result is not None:
+            result["backup"] = str(backup_result)
     print("Seed demo MYMARKET selesai:")
     for key, value in result.items():
         print(f"- {key}: {value}")
