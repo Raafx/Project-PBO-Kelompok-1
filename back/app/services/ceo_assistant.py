@@ -24,6 +24,7 @@ from app.models import (
     SaleItem,
     Supplier,
 )
+from app.services.reporting import period_summary, product_performance
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,9 @@ Gunakan bullet hanya jika memang membantu membaca beberapa angka atau pilihan. H
 formal, jargon berlebihan, pengulangan pertanyaan, dan kesimpulan yang terlalu dramatis.
 
 Gunakan hanya fakta dalam EXECUTIVE_SNAPSHOT dan jangan mengarang angka atau kondisi bisnis.
+Setiap angka wajib disalin apa adanya dari field snapshot yang sesuai. Jangan memperkirakan,
+membulatkan ulang, atau menghitung angka pengganti jika snapshot sudah menyediakan omzet,
+laba, transaksi, jumlah item, HPP, atau margin.
 Sebutkan periode ketika menyampaikan angka, tetapi tidak perlu mengulang tanggal berkali-kali.
 Jika datanya nol, sampaikan apa adanya. Jangan langsung menyimpulkan ada gangguan sistem atau
 operasional kecuali ada bukti di snapshot atau pengguna secara khusus meminta analisis penyebab.
@@ -64,11 +68,71 @@ def _rupiah(value: Any) -> str:
     return f"Rp{_integer(value):,}".replace(",", ".")
 
 
+def _matching_product(question: str, snapshot: dict[str, Any]) -> dict[str, Any] | None:
+    normalized = question.casefold()
+    ignored = {
+        "berapa",
+        "produk",
+        "performa",
+        "keuntungan",
+        "untung",
+        "laba",
+        "omzet",
+        "penjualan",
+        "bulan",
+        "hari",
+        "terakhir",
+    }
+    question_tokens = {
+        token.strip(".,!?()[]")
+        for token in normalized.split()
+        if len(token.strip(".,!?()[]")) >= 4
+    } - ignored
+    matches: list[tuple[int, dict[str, Any]]] = []
+    for product in snapshot.get("performa_produk_30_hari", []):
+        barcode = str(product.get("barcode", "")).casefold()
+        name = str(product.get("nama", "")).casefold()
+        if barcode and barcode in normalized:
+            matches.append((100, product))
+            continue
+        name_tokens = {token for token in name.split() if len(token) >= 4}
+        score = len(question_tokens.intersection(name_tokens))
+        if score:
+            matches.append((score, product))
+    return max(matches, key=lambda item: item[0])[1] if matches else None
+
+
 def executive_fast_reply(question: str, snapshot: dict[str, Any]) -> str | None:
     """Answer common dashboard questions locally so they feel instantaneous."""
 
     normalized = " ".join(question.casefold().strip(" .,!?").split())
     summaries = snapshot.get("ringkasan", {})
+
+    if any(word in normalized for word in ("performa", "keuntungan", "untung", "laba")):
+        product = _matching_product(question, snapshot)
+        if product:
+            return (
+                f"Dalam 30 hari terakhir, **{product['nama']}** terjual "
+                f"{_integer(product['jumlah'])} unit dalam "
+                f"{_integer(product['transaksi'])} transaksi. Omzet bersihnya "
+                f"{_rupiah(product['omzet_bersih'])}, HPP {_rupiah(product['hpp'])}, "
+                f"dan laba kotor {_rupiah(product['laba_kotor'])} "
+                f"(margin {float(product['margin_persen']):.2f}%)."
+            )
+        products = sorted(
+            snapshot.get("performa_produk_30_hari", []),
+            key=lambda item: _integer(item.get("laba_kotor")),
+            reverse=True,
+        )[:5]
+        if products and "produk" in normalized:
+            lines = ["Produk dengan laba kotor tertinggi dalam 30 hari terakhir:"]
+            lines.extend(
+                f"- **{item['nama']}** — laba {_rupiah(item['laba_kotor'])}, "
+                f"omzet {_rupiah(item['omzet_bersih'])}, "
+                f"{_integer(item['jumlah'])} unit"
+                for item in products
+            )
+            return "\n".join(lines)
 
     if "produk" in normalized and any(
         word in normalized for word in ("laris", "terlaris", "teratas")
@@ -109,6 +173,33 @@ def executive_fast_reply(question: str, snapshot: dict[str, Any]) -> str | None:
             f"{_rupiah(previous_revenue)} dari {_integer(previous.get('transaksi'))} transaksi. "
             f"{comparison}"
         )
+
+    if any(phrase in normalized for phrase in ("bulan ini", "bulan berjalan")) and any(
+        word in normalized for word in ("performa", "penjualan", "omzet", "transaksi", "laba")
+    ):
+        current = summaries.get("bulan_berjalan", {})
+        return (
+            f"Bulan berjalan mencatat omzet {_rupiah(current.get('omzet'))} dari "
+            f"{_integer(current.get('transaksi'))} transaksi dan "
+            f"{_integer(current.get('item_terjual'))} item. Laba kotor tercatat "
+            f"{_rupiah(current.get('laba_kotor'))}, dengan rata-rata transaksi "
+            f"{_rupiah(current.get('rata_rata_transaksi'))}."
+        )
+
+    if "transaksi" in normalized:
+        for transaction in snapshot.get("transaksi_terbaru", []):
+            number = str(transaction.get("nomor", ""))
+            if number and number.casefold() in normalized:
+                lines = [
+                    f"Transaksi **{number}** bernilai {_rupiah(transaction['total'])} "
+                    f"dengan laba kotor {_rupiah(transaction['laba_kotor'])}. Barangnya:"
+                ]
+                lines.extend(
+                    f"- {item['nama']} — {_integer(item['jumlah'])} × "
+                    f"{_rupiah(item['harga'])} = {_rupiah(item['subtotal'])}"
+                    for item in transaction.get("barang", [])
+                )
+                return "\n".join(lines)
 
     if "stok" in normalized and any(
         word in normalized for word in ("beli", "dibeli", "pembelian", "ulang", "kritis")
@@ -157,41 +248,6 @@ def _integer(value: Any) -> int:
     return int(value or 0)
 
 
-def _period_summary(session: Session, start_at: datetime, end_at: datetime) -> dict[str, int]:
-    total, transactions, items, discounts = session.execute(
-        select(
-            func.coalesce(func.sum(Sale.total), 0),
-            func.count(Sale.id),
-            func.coalesce(func.sum(Sale.item_count), 0),
-            func.coalesce(func.sum(Sale.discount), 0),
-        ).where(
-            Sale.status == "completed",
-            Sale.created_at >= start_at,
-            Sale.created_at < end_at,
-        )
-    ).one()
-    gross_profit = session.scalar(
-        select(
-            func.coalesce(func.sum(SaleItem.subtotal - (Product.cost_price * SaleItem.quantity)), 0)
-        )
-        .join(Sale, Sale.id == SaleItem.sale_id)
-        .join(Product, Product.id == SaleItem.product_id)
-        .where(
-            Sale.status == "completed",
-            Sale.created_at >= start_at,
-            Sale.created_at < end_at,
-        )
-    )
-    return {
-        "omzet": _integer(total),
-        "transaksi": _integer(transactions),
-        "item_terjual": _integer(items),
-        "rata_rata_transaksi": _integer(total) // _integer(transactions) if transactions else 0,
-        "diskon": _integer(discounts),
-        "estimasi_laba_kotor": _integer(gross_profit),
-    }
-
-
 def build_executive_snapshot(session: Session) -> dict[str, Any]:
     settings = get_settings()
     now = datetime.now(ZoneInfo(settings.business_timezone))
@@ -219,23 +275,12 @@ def build_executive_snapshot(session: Session) -> dict[str, Any]:
         .order_by(func.date(Sale.created_at))
     ).all()
 
-    top_products = session.execute(
-        select(
-            SaleItem.barcode,
-            SaleItem.product_name,
-            func.sum(SaleItem.quantity),
-            func.sum(SaleItem.subtotal),
-        )
-        .join(Sale, Sale.id == SaleItem.sale_id)
-        .where(
-            Sale.status == "completed",
-            Sale.created_at >= thirty_day_start,
-            Sale.created_at < tomorrow_start,
-        )
-        .group_by(SaleItem.barcode, SaleItem.product_name)
-        .order_by(func.sum(SaleItem.subtotal).desc())
-        .limit(10)
-    ).all()
+    performance_rows = product_performance(session, thirty_day_start, tomorrow_start)
+    top_products = sorted(
+        performance_rows,
+        key=lambda item: (_integer(item["quantity"]), _integer(item["net_revenue"])),
+        reverse=True,
+    )[:10]
 
     category_rows = session.execute(
         select(Product.category, func.sum(SaleItem.subtotal), func.sum(SaleItem.quantity))
@@ -313,6 +358,12 @@ def build_executive_snapshot(session: Session) -> dict[str, Any]:
         .limit(5)
     ).all()
     latest_sale = session.scalar(select(func.max(Sale.created_at)))
+    recent_sales = session.scalars(
+        select(Sale)
+        .where(Sale.status == "completed")
+        .order_by(Sale.created_at.desc())
+        .limit(20)
+    ).all()
 
     return {
         "dibuat_pada": now.isoformat(),
@@ -328,11 +379,15 @@ def build_executive_snapshot(session: Session) -> dict[str, Any]:
             },
         },
         "ringkasan": {
-            "hari_ini": _period_summary(session, today_start, tomorrow_start),
-            "kemarin": _period_summary(session, yesterday_start, today_start),
-            "bulan_berjalan": _period_summary(session, month_start, tomorrow_start),
-            "bulan_sebelumnya": _period_summary(session, previous_month_start, previous_month_end),
-            "30_hari_terakhir": _period_summary(session, thirty_day_start, tomorrow_start),
+            "hari_ini": period_summary(session, today_start, tomorrow_start),
+            "kemarin": period_summary(session, yesterday_start, today_start),
+            "bulan_berjalan": period_summary(session, month_start, tomorrow_start),
+            "bulan_sebelumnya": period_summary(
+                session, previous_month_start, previous_month_end
+            ),
+            "30_hari_terakhir": period_summary(
+                session, thirty_day_start, tomorrow_start
+            ),
         },
         "tren_harian_30_hari": [
             {"tanggal": str(day), "omzet": _integer(total), "transaksi": _integer(count)}
@@ -340,12 +395,28 @@ def build_executive_snapshot(session: Session) -> dict[str, Any]:
         ],
         "produk_teratas_30_hari": [
             {
-                "barcode": barcode,
-                "nama": name,
-                "jumlah": _integer(quantity),
-                "omzet": _integer(revenue),
+                "barcode": item["barcode"],
+                "nama": item["name"],
+                "jumlah": _integer(item["quantity"]),
+                "omzet": _integer(item["net_revenue"]),
             }
-            for barcode, name, quantity, revenue in top_products
+            for item in top_products
+        ],
+        "performa_produk_30_hari": [
+            {
+                "barcode": item["barcode"],
+                "nama": item["name"],
+                "kategori": item["category"],
+                "transaksi": _integer(item["transaction_count"]),
+                "jumlah": _integer(item["quantity"]),
+                "omzet_kotor": _integer(item["gross_revenue"]),
+                "diskon": _integer(item["discount"]),
+                "omzet_bersih": _integer(item["net_revenue"]),
+                "hpp": _integer(item["cost_of_goods"]),
+                "laba_kotor": _integer(item["gross_profit"]),
+                "margin_persen": float(item["margin_percentage"]),
+            }
+            for item in performance_rows
         ],
         "kategori_30_hari": [
             {"kategori": category, "omzet": _integer(revenue), "jumlah": _integer(quantity)}
@@ -386,6 +457,27 @@ def build_executive_snapshot(session: Session) -> dict[str, Any]:
             ],
         },
         "transaksi_terakhir_tersimpan": latest_sale.isoformat() if latest_sale else None,
+        "transaksi_terbaru": [
+            {
+                "nomor": sale.transaction_no,
+                "tanggal": sale.created_at.isoformat(),
+                "total": sale.total,
+                "laba_kotor": sum(item.gross_profit for item in sale.items),
+                "barang": [
+                    {
+                        "barcode": item.barcode,
+                        "nama": item.product_name,
+                        "harga": item.unit_price,
+                        "jumlah": item.quantity,
+                        "diskon": item.discount,
+                        "subtotal": item.subtotal,
+                        "laba_kotor": item.gross_profit,
+                    }
+                    for item in sale.items
+                ],
+            }
+            for sale in recent_sales
+        ],
     }
 
 
@@ -456,7 +548,7 @@ async def stream_gemini_answer(
                     contents=contents,
                     config=types.GenerateContentConfig(
                         system_instruction=SYSTEM_INSTRUCTION,
-                        temperature=0.35,
+                        temperature=0.0,
                         max_output_tokens=600,
                     ),
                 )

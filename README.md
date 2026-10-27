@@ -58,8 +58,10 @@ Chatbot CEO memakai Gemini melalui FastAPI. Masukkan API key milik project
 memerlukan dan tidak boleh menyimpan API key.
 
 Setiap pertanyaan diberi konteks aktual dari database MYMARKET dalam bentuk snapshot
-read-only: performa hari ini, bulan berjalan, bulan sebelumnya, tren 30 hari, produk,
-kategori, metode pembayaran, stok kritis, dan pembelian. Respons muncul secara
+read-only: performa hari ini, bulan berjalan, bulan sebelumnya, tren 30 hari, performa
+dan laba per produk, rincian barang per transaksi, kategori, metode pembayaran, stok
+kritis, dan pembelian. Nilai omzet dan laba memakai agregasi database yang sama dengan
+halaman laporan sehingga angka tidak dihitung ulang oleh model. Respons muncul secara
 streaming supaya terasa cepat, sedangkan percakapan disimpan di database dan dapat
 dibuka lagi dari riwayat chat. Akses awalnya hanya diberikan ke role Pemilik melalui
 permission `admin.ceo_chat`.
@@ -74,9 +76,11 @@ berasal dari database `kasir-pbo`.
 - **Transaksi Live** — status terminal kasir, kesiapan pelayanan, progress transaksi,
   isi keranjang, metode bayar, dan heartbeat online/offline secara realtime.
 - **Master Produk** — katalog berfoto, pencarian, filter, tambah, edit, ekspor, dan nonaktifkan produk.
-- **Penjualan** — pencarian dan filter seluruh transaksi POS.
-- **Laporan** — rentang tanggal, tren omzet, produk/kategori terlaris, metode pembayaran,
-  cetak, dan ekspor CSV.
+- **Penjualan** — pencarian nomor transaksi, kasir, pelanggan, nama/barcode produk,
+  serta rincian barang dan laba setiap transaksi POS.
+- **Laporan** — rentang tanggal, ringkasan harian/bulanan, tren omzet dan laba,
+  performa/laba per produk, rincian transaksi dan barang, metode pembayaran, cetak,
+  serta ekspor CSV lengkap.
 - **Persediaan** — saldo gudang dan kasir, transfer antarlokasi, batas minimum, dan koreksi stok.
 - **Pembelian** — pencatatan pembelian langsung yang otomatis menambah stok gudang.
 - **Supplier** — direktori pemasok dan form pemasok baru.

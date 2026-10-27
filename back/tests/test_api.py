@@ -40,6 +40,11 @@ def test_checkout_uses_database_prices_and_exact_cash(client: TestClient) -> Non
     assert sale["subtotal"] == 194_700
     assert sale["total"] == 194_700
     assert sale["item_count"] == 3
+    assert sale["items"][0]["unit_cost"] > 0
+    assert sale["items"][0]["gross_profit"] == (
+        sale["items"][0]["subtotal"]
+        - sale["items"][0]["unit_cost"] * sale["items"][0]["quantity"]
+    )
     assert sale["payment"]["received_amount"] == 194_700
     assert sale["payment"]["change_amount"] == 0
     stock_after = client.get("/api/v1/products/barcode/8997000400001").json()["stock"]

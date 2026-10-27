@@ -82,6 +82,8 @@ def test_executive_snapshot_uses_database(session: Session) -> None:
     assert "30_hari_terakhir" in snapshot["ringkasan"]
     assert snapshot["persediaan"]["produk_aktif"] > 0
     assert isinstance(snapshot["produk_teratas_30_hari"], list)
+    assert isinstance(snapshot["performa_produk_30_hari"], list)
+    assert isinstance(snapshot["transaksi_terbaru"], list)
 
 
 def test_copilot_instruction_prefers_natural_conversation() -> None:
@@ -111,3 +113,31 @@ def test_common_business_questions_are_answered_without_waiting_for_ai(session: 
     assert products is not None and "30 hari terakhir" in products
     assert comparison is not None and "Omzet bulan berjalan" in comparison
     assert stock is not None and "stok" in stock.casefold()
+
+
+def test_product_profit_reply_uses_exact_database_snapshot(
+    client: TestClient, session: Session
+) -> None:
+    checkout = client.post(
+        "/api/v1/sales/checkout",
+        json={
+            "store_code": "MY-001",
+            "cashier_code": "KASIR03",
+            "items": [{"barcode": "8997000400001", "quantity": 2}],
+            "payment": {"method": "cash"},
+        },
+    )
+    assert checkout.status_code == 201
+
+    snapshot = build_executive_snapshot(session)
+    answer = executive_fast_reply("Berapa keuntungan produk Cerelac?", snapshot)
+    transaction_answer = executive_fast_reply(
+        f"Barang di transaksi {checkout.json()['transaction_no']} apa saja?",
+        snapshot,
+    )
+
+    assert answer is not None
+    assert "Rp35.800" in answer
+    assert "Rp145.800" in answer
+    assert transaction_answer is not None
+    assert "Nestle Cerelac" in transaction_answer

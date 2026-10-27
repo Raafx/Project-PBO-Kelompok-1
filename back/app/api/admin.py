@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 from typing import Annotated
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from sqlalchemy import func, or_, select
@@ -34,6 +35,8 @@ from app.schemas import (
     PurchaseOrderRead,
     ReportBreakdown,
     ReportDailySale,
+    ReportMonthlySale,
+    ReportProductPerformance,
     ReportTopProduct,
     RolePermissionsUpdate,
     RoleRead,
@@ -65,6 +68,7 @@ from app.services.inventory import (
 )
 from app.services.operations import actor_from_token, write_audit
 from app.services.products import archive_product, create_product, update_product
+from app.services.reporting import period_summary, product_performance
 
 router = APIRouter(prefix="/admin", tags=["Admin inventory"])
 DbSession = Annotated[Session, Depends(get_db)]
@@ -113,7 +117,7 @@ def require_any_permission(*permissions: str):
 def _report_window(
     date_from: date | None, date_to: date | None
 ) -> tuple[date, date, datetime, datetime]:
-    end_date = date_to or datetime.now(UTC).date()
+    end_date = date_to or _business_now().date()
     start_date = date_from or (end_date - timedelta(days=29))
     if start_date > end_date:
         raise HTTPException(
@@ -124,6 +128,10 @@ def _report_window(
     start_at = datetime.combine(start_date, time.min)
     end_at = datetime.combine(end_date + timedelta(days=1), time.min)
     return start_date, end_date, start_at, end_at
+
+
+def _business_now() -> datetime:
+    return datetime.now(ZoneInfo(get_settings().business_timezone)).replace(tzinfo=None)
 
 
 def _product_or_404(session: Session, product_id: str) -> Product:
@@ -156,10 +164,12 @@ def _sale_rows(rows: list[object]) -> list[AdminSaleRead]:
             total=row.Sale.total,
             discount=row.Sale.discount,
             item_count=row.Sale.item_count,
+            gross_profit=sum(item.gross_profit for item in row.Sale.items),
             created_at=row.Sale.created_at,
             cashier_name=row.cashier_name,
             member_name=row.member_name,
             payment_method=row.payment_method,
+            items=list(row.Sale.items),
         )
         for row in rows
     ]
@@ -208,9 +218,7 @@ def dashboard(session: DbSession) -> AdminDashboardRead:
         )
         or 0
     )
-    month_start = datetime.now(UTC).replace(
-        day=1, hour=0, minute=0, second=0, microsecond=0, tzinfo=None
-    )
+    month_start = _business_now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     monthly_spend = (
         session.scalar(
             select(func.coalesce(func.sum(PurchaseOrder.subtotal), 0)).where(
@@ -274,11 +282,18 @@ def list_sales(
         statement = statement.where(Sale.status == sale_status)
     if search:
         term = f"%{search.strip()}%"
+        matching_sale_ids = select(SaleItem.sale_id).where(
+            or_(
+                SaleItem.product_name.like(term),
+                SaleItem.barcode.like(term),
+            )
+        )
         statement = statement.where(
             or_(
                 Sale.transaction_no.like(term),
                 Cashier.full_name.like(term),
                 Member.full_name.like(term),
+                Sale.id.in_(matching_sale_ids),
             )
         )
     rows = session.execute(statement.order_by(Sale.created_at.desc()).limit(limit)).all()
@@ -302,32 +317,7 @@ def sales_report(
         Sale.created_at < end_at,
     )
 
-    total_sales, transaction_count, item_count, total_discount = session.execute(
-        select(
-            func.coalesce(func.sum(Sale.total), 0),
-            func.count(Sale.id),
-            func.coalesce(func.sum(Sale.item_count), 0),
-            func.coalesce(func.sum(Sale.discount), 0),
-        ).where(*completed)
-    ).one()
-
-    estimated_profit = (
-        session.scalar(
-            select(
-                func.coalesce(
-                    func.sum(
-                        ((SaleItem.unit_price - Product.cost_price) * SaleItem.quantity)
-                        - SaleItem.discount
-                    ),
-                    0,
-                )
-            )
-            .join(Sale, Sale.id == SaleItem.sale_id)
-            .join(Product, Product.id == SaleItem.product_id)
-            .where(*completed)
-        )
-        or 0
-    )
+    summary = period_summary(session, start_at, end_at)
 
     day_column = func.date(Sale.created_at).label("day")
     daily_rows = session.execute(
@@ -343,6 +333,22 @@ def sales_report(
     daily_by_date = {
         str(row.day): (int(row.total_sales), int(row.transaction_count)) for row in daily_rows
     }
+    profit_day_column = func.date(Sale.created_at).label("day")
+    daily_profit_rows = session.execute(
+        select(
+            profit_day_column,
+            func.coalesce(
+                func.sum(SaleItem.subtotal - (SaleItem.unit_cost * SaleItem.quantity)),
+                0,
+            ).label("gross_profit"),
+        )
+        .join(SaleItem, SaleItem.sale_id == Sale.id)
+        .where(*completed)
+        .group_by(profit_day_column)
+    ).all()
+    daily_profit_by_date = {
+        str(row.day): int(row.gross_profit) for row in daily_profit_rows
+    }
     daily_sales: list[ReportDailySale] = []
     cursor = start_date
     while cursor <= end_date:
@@ -352,6 +358,7 @@ def sales_report(
                 date=cursor,
                 total_sales=sales_amount,
                 transaction_count=transactions,
+                gross_profit=daily_profit_by_date.get(cursor.isoformat(), 0),
             )
         )
         cursor += timedelta(days=1)
@@ -381,38 +388,48 @@ def sales_report(
         .order_by(func.sum(SaleItem.subtotal).desc())
     ).all()
 
-    product_rows = session.execute(
-        select(
-            SaleItem.barcode,
-            SaleItem.product_name,
-            func.coalesce(func.sum(SaleItem.quantity), 0).label("quantity"),
-            func.coalesce(func.sum(SaleItem.subtotal), 0).label("revenue"),
-        )
-        .join(Sale, Sale.id == SaleItem.sale_id)
-        .where(*completed)
-        .group_by(SaleItem.barcode, SaleItem.product_name)
-        .order_by(func.sum(SaleItem.quantity).desc(), func.sum(SaleItem.subtotal).desc())
-        .limit(8)
-    ).all()
+    performance = product_performance(session, start_at, end_at)
+    top_products = sorted(
+        performance,
+        key=lambda item: (int(item["quantity"]), int(item["net_revenue"])),
+        reverse=True,
+    )[:8]
 
-    recent_rows = session.execute(
+    transaction_rows = session.execute(
         _sale_list_statement()
-        .where(Sale.created_at >= start_at, Sale.created_at < end_at)
+        .where(*completed)
         .order_by(Sale.created_at.desc())
-        .limit(8)
+        .limit(500)
     ).all()
+    transactions = _sale_rows(transaction_rows)
 
-    transaction_total = int(transaction_count)
+    monthly_totals: dict[str, dict[str, int]] = {}
+    for daily in daily_sales:
+        month = daily.date.strftime("%Y-%m")
+        values = monthly_totals.setdefault(
+            month,
+            {"total_sales": 0, "transaction_count": 0, "gross_profit": 0},
+        )
+        values["total_sales"] += daily.total_sales
+        values["transaction_count"] += daily.transaction_count
+        values["gross_profit"] += daily.gross_profit
+    monthly_sales = [
+        ReportMonthlySale(month=month, **values)
+        for month, values in sorted(monthly_totals.items())
+    ]
+
+    transaction_total = summary["transaksi"]
     return AdminSalesReportRead(
         date_from=start_date,
         date_to=end_date,
-        total_sales=int(total_sales),
+        total_sales=summary["omzet"],
         transaction_count=transaction_total,
-        item_count=int(item_count),
-        average_transaction=int(total_sales) // transaction_total if transaction_total else 0,
-        total_discount=int(total_discount),
-        estimated_gross_profit=int(estimated_profit),
+        item_count=summary["item_terjual"],
+        average_transaction=summary["rata_rata_transaksi"],
+        total_discount=summary["diskon"],
+        estimated_gross_profit=summary["laba_kotor"],
         daily_sales=daily_sales,
+        monthly_sales=monthly_sales,
         payment_methods=[
             ReportBreakdown(label=row.label, amount=int(row.amount), count=int(row.count))
             for row in payment_rows
@@ -423,14 +440,19 @@ def sales_report(
         ],
         top_products=[
             ReportTopProduct(
-                barcode=row.barcode,
-                name=row.product_name,
-                quantity=int(row.quantity),
-                revenue=int(row.revenue),
+                barcode=str(item["barcode"]),
+                name=str(item["name"]),
+                quantity=int(item["quantity"]),
+                revenue=int(item["net_revenue"]),
+                transaction_count=int(item["transaction_count"]),
+                gross_profit=int(item["gross_profit"]),
+                margin_percentage=float(item["margin_percentage"]),
             )
-            for row in product_rows
+            for item in top_products
         ],
-        recent_sales=_sale_rows(recent_rows),
+        product_performance=[ReportProductPerformance(**item) for item in performance],
+        recent_sales=transactions[:8],
+        transactions=transactions,
     )
 
 

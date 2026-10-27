@@ -292,6 +292,7 @@ fi
 cat > /usr/local/sbin/mymarket-mariadb <<'EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
+export TZ=Asia/Makassar
 install -d -m 0755 -o mysql -g mysql /run/mysqld
 if [[ ! -d /var/lib/mysql/mysql ]]; then
     mariadb-install-db --user=mysql --datadir=/var/lib/mysql

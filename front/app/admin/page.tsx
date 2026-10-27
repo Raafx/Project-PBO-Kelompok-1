@@ -4,7 +4,14 @@ import { Icon } from "@iconify/react";
 import type { ApexOptions } from "apexcharts";
 import dynamic from "next/dynamic";
 import Image from "next/image";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  FormEvent,
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import {
   Alert,
   Badge,
@@ -576,9 +583,12 @@ export default function AdminPage() {
         salesStatus === "all" || sale.status === salesStatus;
       const matchesQuery =
         !query ||
-        [sale.transaction_no, sale.cashier_name, sale.member_name || ""].some(
-          (value) => value.toLocaleLowerCase("id-ID").includes(query),
-        );
+        [
+          sale.transaction_no,
+          sale.cashier_name,
+          sale.member_name || "",
+          ...sale.items.flatMap((item) => [item.product_name, item.barcode]),
+        ].some((value) => value.toLocaleLowerCase("id-ID").includes(query));
       return matchesStatus && matchesQuery;
     });
   }, [sales, salesSearch, salesStatus]);
@@ -735,14 +745,12 @@ export default function AdminPage() {
     document.documentElement.classList.remove("sidebar-enable");
   }
 
-  async function applyReportRange() {
+  async function applyReportRange(nextRange = reportRange) {
     setWorking(true);
     setError("");
     try {
-      const nextReport = await loadSalesReport(
-        reportRange.from,
-        reportRange.to,
-      );
+      const nextReport = await loadSalesReport(nextRange.from, nextRange.to);
+      setReportRange(nextRange);
       setReport(nextReport);
       showToast("Rentang laporan diperbarui.");
     } catch (caught) {
@@ -756,15 +764,75 @@ export default function AdminPage() {
 
   function exportReport() {
     if (!report) return;
+    const escapeCsv = (value: string | number) =>
+      `"${String(value).replaceAll('"', '""')}"`;
     const rows = [
-      ["Tanggal", "Transaksi", "Omzet"],
+      ["RINGKASAN HARIAN"],
+      ["Tanggal", "Transaksi", "Omzet", "Laba Kotor"],
       ...report.daily_sales.map((item) => [
         item.date,
         item.transaction_count,
         item.total_sales,
+        item.gross_profit,
       ]),
+      [],
+      ["PERFORMA PRODUK"],
+      [
+        "Barcode",
+        "Produk",
+        "Kategori",
+        "Transaksi",
+        "Unit",
+        "Omzet Bersih",
+        "HPP",
+        "Laba Kotor",
+        "Margin (%)",
+      ],
+      ...report.product_performance.map((item) => [
+        item.barcode,
+        item.name,
+        item.category,
+        item.transaction_count,
+        item.quantity,
+        item.net_revenue,
+        item.cost_of_goods,
+        item.gross_profit,
+        item.margin_percentage,
+      ]),
+      [],
+      ["DETAIL TRANSAKSI DAN BARANG"],
+      [
+        "Tanggal",
+        "No Transaksi",
+        "Kasir",
+        "Metode",
+        "Barcode",
+        "Produk",
+        "Qty",
+        "Harga",
+        "Diskon",
+        "Subtotal",
+        "Laba Kotor",
+      ],
+      ...report.transactions.flatMap((sale) =>
+        sale.items.map((item) => [
+          sale.created_at,
+          sale.transaction_no,
+          sale.cashier_name,
+          sale.payment_method || "",
+          item.barcode,
+          item.product_name,
+          item.quantity,
+          item.unit_price,
+          item.discount,
+          item.subtotal,
+          item.gross_profit,
+        ]),
+      ),
     ];
-    const csv = rows.map((row) => row.join(",")).join("\n");
+    const csv = rows
+      .map((row) => row.map((cell) => escapeCsv(cell)).join(","))
+      .join("\n");
     const url = URL.createObjectURL(
       new Blob([csv], { type: "text/csv;charset=utf-8" }),
     );
@@ -1065,7 +1133,7 @@ export default function AdminPage() {
           range={reportRange}
           working={working}
           onRangeChange={setReportRange}
-          onApply={() => void applyReportRange()}
+          onApply={(nextRange) => void applyReportRange(nextRange)}
           onExport={exportReport}
         />
       ) : null}
@@ -3482,7 +3550,7 @@ function SalesView({
             <Form.Control
               value={search}
               onChange={(event) => onSearch(event.target.value)}
-              placeholder="Cari transaksi atau kasir"
+              placeholder="Cari transaksi, kasir, atau produk"
             />
           </InputGroup>
           <SearchableSelect
@@ -3524,9 +3592,68 @@ function ReportsView({
   range: { from: string; to: string };
   working: boolean;
   onRangeChange: (value: { from: string; to: string }) => void;
-  onApply: () => void;
+  onApply: (value?: { from: string; to: string }) => void;
   onExport: () => void;
 }) {
+  const [periodMode, setPeriodMode] = useState<"daily" | "monthly">("daily");
+  const [reportProductSearch, setReportProductSearch] = useState("");
+  const [reportTransactionSearch, setReportTransactionSearch] = useState("");
+  const [productPage, setProductPage] = useState(1);
+  const [transactionPage, setTransactionPage] = useState(1);
+  const reportPageSize = 25;
+  const productQuery = reportProductSearch.trim().toLocaleLowerCase("id-ID");
+  const transactionQuery = reportTransactionSearch
+    .trim()
+    .toLocaleLowerCase("id-ID");
+  const filteredProductPerformance = report.product_performance.filter(
+    (product) =>
+      !productQuery ||
+      [product.name, product.barcode, product.category].some((value) =>
+        value.toLocaleLowerCase("id-ID").includes(productQuery),
+      ),
+  );
+  const filteredReportTransactions = report.transactions.filter(
+    (sale) =>
+      !transactionQuery ||
+      [
+        sale.transaction_no,
+        sale.cashier_name,
+        sale.member_name || "",
+        sale.payment_method || "",
+        ...sale.items.flatMap((item) => [item.product_name, item.barcode]),
+      ].some((value) =>
+        value.toLocaleLowerCase("id-ID").includes(transactionQuery),
+      ),
+  );
+  const productPageCount = Math.max(
+    1,
+    Math.ceil(filteredProductPerformance.length / reportPageSize),
+  );
+  const transactionPageCount = Math.max(
+    1,
+    Math.ceil(filteredReportTransactions.length / reportPageSize),
+  );
+  const currentProductPage = Math.min(productPage, productPageCount);
+  const currentTransactionPage = Math.min(transactionPage, transactionPageCount);
+  const visibleProductPerformance = filteredProductPerformance.slice(
+    (currentProductPage - 1) * reportPageSize,
+    currentProductPage * reportPageSize,
+  );
+  const visibleReportTransactions = filteredReportTransactions.slice(
+    (currentTransactionPage - 1) * reportPageSize,
+    currentTransactionPage * reportPageSize,
+  );
+  const localDateValue = (value: Date) => {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, "0");
+    const day = String(value.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+  const today = new Date();
+  const todayValue = localDateValue(today);
+  const monthStartValue = localDateValue(
+    new Date(today.getFullYear(), today.getMonth(), 1),
+  );
   const metrics = [
     {
       label: "Total omzet",
@@ -3601,9 +3728,27 @@ function ReportsView({
             </Col>
             <Col md={6} xl={4} className="d-flex flex-wrap gap-2">
               <Button
+                variant="outline-secondary"
+                disabled={working}
+                onClick={() =>
+                  onApply({ from: todayValue, to: todayValue })
+                }
+              >
+                Hari ini
+              </Button>
+              <Button
+                variant="outline-secondary"
+                disabled={working}
+                onClick={() =>
+                  onApply({ from: monthStartValue, to: todayValue })
+                }
+              >
+                Bulan ini
+              </Button>
+              <Button
                 variant="outline-primary"
                 disabled={working}
-                onClick={onApply}
+                onClick={() => onApply()}
               >
                 {working ? (
                   <Spinner size="sm" className="me-1" />
@@ -3721,7 +3866,236 @@ function ReportsView({
           </Card>
         </Col>
       </Row>
+      <Card className="mt-3">
+        <Card.Header className="d-flex flex-wrap align-items-center justify-content-between gap-3">
+          <div>
+            <h4 className="mb-1">Laporan transaksi per periode</h4>
+            <p className="text-muted mb-0">
+              Ringkasan omzet, laba, dan jumlah transaksi harian atau bulanan.
+            </p>
+          </div>
+          <SearchableSelect
+            className="w-auto"
+            value={periodMode}
+            onChange={(event) =>
+              setPeriodMode(event.target.value as "daily" | "monthly")
+            }
+            aria-label="Kelompokkan laporan transaksi"
+          >
+            <option value="daily">Per hari</option>
+            <option value="monthly">Per bulan</option>
+          </SearchableSelect>
+        </Card.Header>
+        <div className="table-responsive">
+          <Table className="table-custom table-centered mb-0">
+            <thead>
+              <tr>
+                <th>Periode</th>
+                <th className="text-end">Transaksi</th>
+                <th className="text-end">Omzet</th>
+                <th className="text-end">Laba kotor</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(periodMode === "daily"
+                ? report.daily_sales.map((item) => ({
+                    period: formatDate(item.date),
+                    ...item,
+                  }))
+                : report.monthly_sales.map((item) => ({
+                    period: new Date(`${item.month}-01T00:00:00`).toLocaleDateString(
+                      "id-ID",
+                      { month: "long", year: "numeric" },
+                    ),
+                    ...item,
+                  }))).map((item) => (
+                <tr key={item.period}>
+                  <td>
+                    <strong>{item.period}</strong>
+                  </td>
+                  <td className="text-end">
+                    {numberFormatter.format(item.transaction_count)}
+                  </td>
+                  <td className="text-end">{formatMoney(item.total_sales)}</td>
+                  <td className="text-end text-success fw-semibold">
+                    {formatMoney(item.gross_profit)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        </div>
+      </Card>
+      <Card className="mt-3">
+        <Card.Header className="d-flex flex-wrap align-items-center justify-content-between gap-3">
+          <div>
+            <h4 className="mb-1">Keuntungan dan performa per produk</h4>
+            <p className="text-muted mb-0">
+              Omzet, HPP, laba, margin, dan jumlah transaksi dihitung langsung
+              dari item penjualan.
+            </p>
+          </div>
+          <InputGroup className="admin-report-search">
+            <InputGroup.Text>
+              <Icon icon="solar:magnifer-linear" width={17} />
+            </InputGroup.Text>
+            <Form.Control
+              value={reportProductSearch}
+              onChange={(event) => {
+                setReportProductSearch(event.target.value);
+                setProductPage(1);
+              }}
+              placeholder="Cari produk, barcode, atau kategori"
+              aria-label="Cari performa produk"
+            />
+          </InputGroup>
+        </Card.Header>
+        <div className="table-responsive">
+          <Table className="table-custom table-centered table-hover mb-0">
+            <thead>
+              <tr>
+                <th>Produk</th>
+                <th className="text-end">Transaksi</th>
+                <th className="text-end">Unit</th>
+                <th className="text-end">Omzet bersih</th>
+                <th className="text-end">HPP</th>
+                <th className="text-end">Laba kotor</th>
+                <th className="text-end">Margin</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleProductPerformance.map((product) => (
+                <tr key={product.product_id}>
+                  <td>
+                    <strong className="d-block">{product.name}</strong>
+                    <small className="text-muted">
+                      {product.barcode} · {product.category}
+                    </small>
+                  </td>
+                  <td className="text-end">
+                    {numberFormatter.format(product.transaction_count)}
+                  </td>
+                  <td className="text-end">
+                    {numberFormatter.format(product.quantity)}
+                  </td>
+                  <td className="text-end">{formatMoney(product.net_revenue)}</td>
+                  <td className="text-end">{formatMoney(product.cost_of_goods)}</td>
+                  <td className="text-end text-success fw-semibold">
+                    {formatMoney(product.gross_profit)}
+                  </td>
+                  <td className="text-end">
+                    {product.margin_percentage.toLocaleString("id-ID", {
+                      maximumFractionDigits: 2,
+                    })}
+                    %
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        </div>
+        {!filteredProductPerformance.length ? (
+          <Card.Body className="text-center text-muted">
+            Produk tidak ditemukan pada periode ini.
+          </Card.Body>
+        ) : (
+          <ReportPagination
+            page={currentProductPage}
+            pageCount={productPageCount}
+            itemCount={filteredProductPerformance.length}
+            pageSize={reportPageSize}
+            onPageChange={setProductPage}
+          />
+        )}
+      </Card>
+      <Card className="mt-3">
+        <Card.Header className="d-flex flex-wrap align-items-center justify-content-between gap-3">
+          <div>
+            <h4 className="mb-1">Detail transaksi dan barang</h4>
+            <p className="text-muted mb-0">
+              Buka setiap transaksi untuk melihat produk, jumlah, harga, diskon,
+              dan laba per barang.
+            </p>
+          </div>
+          <InputGroup className="admin-report-search">
+            <InputGroup.Text>
+              <Icon icon="solar:magnifer-linear" width={17} />
+            </InputGroup.Text>
+            <Form.Control
+              value={reportTransactionSearch}
+              onChange={(event) => {
+                setReportTransactionSearch(event.target.value);
+                setTransactionPage(1);
+              }}
+              placeholder="Cari transaksi, kasir, atau produk"
+              aria-label="Cari detail transaksi"
+            />
+          </InputGroup>
+        </Card.Header>
+        <SalesTable sales={visibleReportTransactions} />
+        {!filteredReportTransactions.length ? (
+          <Card.Body className="text-center text-muted">
+            Transaksi tidak ditemukan pada periode ini.
+          </Card.Body>
+        ) : (
+          <ReportPagination
+            page={currentTransactionPage}
+            pageCount={transactionPageCount}
+            itemCount={filteredReportTransactions.length}
+            pageSize={reportPageSize}
+            onPageChange={setTransactionPage}
+          />
+        )}
+      </Card>
     </>
+  );
+}
+
+function ReportPagination({
+  page,
+  pageCount,
+  itemCount,
+  pageSize,
+  onPageChange,
+}: {
+  page: number;
+  pageCount: number;
+  itemCount: number;
+  pageSize: number;
+  onPageChange: (page: number) => void;
+}) {
+  const firstItem = (page - 1) * pageSize + 1;
+  const lastItem = Math.min(page * pageSize, itemCount);
+  return (
+    <Card.Footer className="d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <small className="text-muted">
+        Menampilkan {numberFormatter.format(firstItem)}–
+        {numberFormatter.format(lastItem)} dari {numberFormatter.format(itemCount)} data
+      </small>
+      <div className="d-flex align-items-center gap-2">
+        <Button
+          type="button"
+          size="sm"
+          variant="outline-secondary"
+          disabled={page <= 1}
+          onClick={() => onPageChange(page - 1)}
+        >
+          Sebelumnya
+        </Button>
+        <small className="text-muted">
+          Halaman {numberFormatter.format(page)} dari {numberFormatter.format(pageCount)}
+        </small>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline-secondary"
+          disabled={page >= pageCount}
+          onClick={() => onPageChange(page + 1)}
+        >
+          Berikutnya
+        </Button>
+      </div>
+    </Card.Footer>
   );
 }
 
@@ -3732,7 +4106,7 @@ function SalesTrendChart({ data }: { data: SalesReport["daily_sales"] }) {
       zoom: { enabled: false },
       fontFamily: "inherit",
     },
-    colors: ["#3e60d5"],
+    colors: ["#3e60d5", "#0f9f78"],
     dataLabels: { enabled: false },
     stroke: { curve: "smooth", width: 3 },
     fill: {
@@ -3768,7 +4142,10 @@ function SalesTrendChart({ data }: { data: SalesReport["daily_sales"] }) {
   return (
     <ReactApexChart
       options={options}
-      series={[{ name: "Omzet", data: data.map((item) => item.total_sales) }]}
+      series={[
+        { name: "Omzet", data: data.map((item) => item.total_sales) },
+        { name: "Laba kotor", data: data.map((item) => item.gross_profit) },
+      ]}
       type="area"
       height={310}
     />
@@ -3830,7 +4207,16 @@ function TopProducts({ products }: { products: SalesReport["top_products"] }) {
             <strong className="d-block">
               {numberFormatter.format(product.quantity)} unit
             </strong>
-            <small className="text-muted">{formatMoney(product.revenue)}</small>
+            <small className="text-muted d-block">
+              Omzet {formatMoney(product.revenue)}
+            </small>
+            <small className="text-success">
+              Laba {formatMoney(product.gross_profit)} ·{" "}
+              {product.margin_percentage.toLocaleString("id-ID", {
+                maximumFractionDigits: 2,
+              })}
+              %
+            </small>
           </div>
         </div>
       ))}
@@ -3845,7 +4231,16 @@ function SalesTable({
   sales: AdminSale[];
   compact?: boolean;
 }) {
+  const [expandedSales, setExpandedSales] = useState<Set<string>>(new Set());
   if (!sales.length) return null;
+  const toggleSale = (saleId: string) => {
+    setExpandedSales((current) => {
+      const next = new Set(current);
+      if (next.has(saleId)) next.delete(saleId);
+      else next.add(saleId);
+      return next;
+    });
+  };
   return (
     <div className="table-responsive">
       <Table className="table-custom table-centered table-nowrap table-hover mb-0">
@@ -3857,55 +4252,130 @@ function SalesTable({
             <th>Bayar</th>
             <th className="text-center">Item</th>
             <th>Status</th>
+            {!compact ? <th className="text-end">Laba</th> : null}
             <th className="text-end">Total</th>
           </tr>
         </thead>
         <tbody>
-          {sales.map((sale) => (
-            <tr key={sale.id}>
-              <td>
-                <strong>{sale.transaction_no}</strong>
-              </td>
-              <td>{dateTimeFormatter.format(new Date(sale.created_at))}</td>
-              <td>
-                <strong className="d-block">{sale.cashier_name}</strong>
-                <small className="text-muted">
-                  {sale.member_name || "Pelanggan umum"}
-                </small>
-              </td>
-              <td>
-                {sale.payment_method
-                  ? paymentLabels[sale.payment_method] || sale.payment_method
-                  : "—"}
-              </td>
-              <td className="text-center">{sale.item_count}</td>
-              <td>
-                <Badge
-                  bg={
-                    sale.status === "completed"
-                      ? "success"
-                      : sale.status === "held"
-                        ? "warning"
-                        : "danger"
-                  }
-                >
-                  {sale.status === "completed"
-                    ? "Selesai"
-                    : sale.status === "held"
-                      ? "Hold"
-                      : "Dibatalkan"}
-                </Badge>
-              </td>
-              <td className="text-end">
-                <strong className="d-block">{formatMoney(sale.total)}</strong>
-                {!compact && sale.discount > 0 ? (
-                  <small className="text-muted">
-                    Diskon {formatMoney(sale.discount)}
-                  </small>
+          {sales.map((sale) => {
+            const expanded = expandedSales.has(sale.id);
+            return (
+              <Fragment key={sale.id}>
+                <tr>
+                  <td>
+                    <strong className="d-block">{sale.transaction_no}</strong>
+                    {!compact ? (
+                      <button
+                        type="button"
+                        className="btn btn-link btn-sm p-0 text-decoration-none"
+                        onClick={() => toggleSale(sale.id)}
+                        aria-expanded={expanded}
+                      >
+                        <Icon
+                          icon={
+                            expanded
+                              ? "solar:alt-arrow-up-linear"
+                              : "solar:alt-arrow-down-linear"
+                          }
+                          width={14}
+                          className="me-1"
+                        />
+                        {expanded ? "Tutup barang" : "Lihat barang"}
+                      </button>
+                    ) : null}
+                  </td>
+                  <td>{dateTimeFormatter.format(new Date(sale.created_at))}</td>
+                  <td>
+                    <strong className="d-block">{sale.cashier_name}</strong>
+                    <small className="text-muted">
+                      {sale.member_name || "Pelanggan umum"}
+                    </small>
+                  </td>
+                  <td>
+                    {sale.payment_method
+                      ? paymentLabels[sale.payment_method] || sale.payment_method
+                      : "—"}
+                  </td>
+                  <td className="text-center">{sale.item_count}</td>
+                  <td>
+                    <Badge
+                      bg={
+                        sale.status === "completed"
+                          ? "success"
+                          : sale.status === "held"
+                            ? "warning"
+                            : "danger"
+                      }
+                    >
+                      {sale.status === "completed"
+                        ? "Selesai"
+                        : sale.status === "held"
+                          ? "Hold"
+                          : "Dibatalkan"}
+                    </Badge>
+                  </td>
+                  {!compact ? (
+                    <td className="text-end text-success fw-semibold">
+                      {formatMoney(sale.gross_profit)}
+                    </td>
+                  ) : null}
+                  <td className="text-end">
+                    <strong className="d-block">{formatMoney(sale.total)}</strong>
+                    {!compact && sale.discount > 0 ? (
+                      <small className="text-muted">
+                        Diskon {formatMoney(sale.discount)}
+                      </small>
+                    ) : null}
+                  </td>
+                </tr>
+                {!compact && expanded ? (
+                  <tr className="sale-items-detail-row">
+                    <td colSpan={8}>
+                      <div className="sale-items-detail">
+                        <Table size="sm" className="mb-0 align-middle">
+                          <thead>
+                            <tr>
+                              <th>Barang</th>
+                              <th className="text-end">Harga</th>
+                              <th className="text-end">Qty</th>
+                              <th className="text-end">Diskon</th>
+                              <th className="text-end">Subtotal</th>
+                              <th className="text-end">Laba</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {sale.items.map((item) => (
+                              <tr key={`${sale.id}-${item.product_id}`}>
+                                <td>
+                                  <strong className="d-block">
+                                    {item.product_name}
+                                  </strong>
+                                  <small className="text-muted">{item.barcode}</small>
+                                </td>
+                                <td className="text-end">
+                                  {formatMoney(item.unit_price)}
+                                </td>
+                                <td className="text-end">{item.quantity}</td>
+                                <td className="text-end">
+                                  {formatMoney(item.discount)}
+                                </td>
+                                <td className="text-end">
+                                  {formatMoney(item.subtotal)}
+                                </td>
+                                <td className="text-end text-success fw-semibold">
+                                  {formatMoney(item.gross_profit)}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </Table>
+                      </div>
+                    </td>
+                  </tr>
                 ) : null}
-              </td>
-            </tr>
-          ))}
+              </Fragment>
+            );
+          })}
         </tbody>
       </Table>
     </div>

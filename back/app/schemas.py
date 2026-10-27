@@ -150,12 +150,15 @@ class HoldCreate(SaleBaseCreate):
 class SaleItemRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
+    product_id: str
     barcode: str
     product_name: str
     unit_price: int
+    unit_cost: int
     quantity: int
     discount: int
     subtotal: int
+    gross_profit: int
 
 
 class PaymentRead(BaseModel):
@@ -476,16 +479,26 @@ class AdminSaleRead(BaseModel):
     total: int
     discount: int
     item_count: int
+    gross_profit: int
     created_at: datetime
     cashier_name: str
     member_name: str | None
     payment_method: str | None
+    items: list[SaleItemRead]
 
 
 class ReportDailySale(BaseModel):
     date: date
     total_sales: int
     transaction_count: int
+    gross_profit: int
+
+
+class ReportMonthlySale(BaseModel):
+    month: str
+    total_sales: int
+    transaction_count: int
+    gross_profit: int
 
 
 class ReportBreakdown(BaseModel):
@@ -499,6 +512,26 @@ class ReportTopProduct(BaseModel):
     name: str
     quantity: int
     revenue: int
+    transaction_count: int
+    gross_profit: int
+    margin_percentage: float
+
+
+class ReportProductPerformance(BaseModel):
+    product_id: str
+    barcode: str
+    name: str
+    category: str
+    image_url: str | None
+    transaction_count: int
+    quantity: int
+    gross_revenue: int
+    discount: int
+    net_revenue: int
+    cost_of_goods: int
+    gross_profit: int
+    margin_percentage: float
+    average_unit_price: int
 
 
 class AdminSalesReportRead(BaseModel):
@@ -511,10 +544,13 @@ class AdminSalesReportRead(BaseModel):
     total_discount: int
     estimated_gross_profit: int
     daily_sales: list[ReportDailySale]
+    monthly_sales: list[ReportMonthlySale]
     payment_methods: list[ReportBreakdown]
     category_sales: list[ReportBreakdown]
     top_products: list[ReportTopProduct]
+    product_performance: list[ReportProductPerformance]
     recent_sales: list[AdminSaleRead]
+    transactions: list[AdminSaleRead]
 
 
 class CeoChatStatusRead(BaseModel):

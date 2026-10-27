@@ -355,9 +355,10 @@ def _seed_sales(
                         barcode=product.barcode,
                         product_name=product.name,
                         unit_price=product.price,
+                        unit_cost=product.cost_price,
                         quantity=quantity,
                         discount=line_discount,
-                        subtotal=line_subtotal,
+                        subtotal=line_subtotal - line_discount,
                     )
                 )
                 if status == "completed":
@@ -566,6 +567,7 @@ def _seed_recent_holds(
                 barcode=product.barcode,
                 product_name=product.name,
                 unit_price=product.price,
+                unit_cost=product.cost_price,
                 quantity=1,
                 discount=0,
                 subtotal=product.price,

@@ -37,9 +37,11 @@ GOOGLE_CLOUD_PROJECT_NUMBER=69198748984
 ```
 
 Setelah mengubah `.env`, restart backend. CEO Copilot mengambil snapshot read-only
-langsung dari database: omzet beberapa periode, tren 30 hari, produk dan kategori
-teratas, metode pembayaran, stok kritis, supplier, serta pembelian. Jawaban Gemini
-dikirim secara streaming dan riwayatnya disimpan di database per akun admin. Endpoint
+langsung dari database: omzet beberapa periode, tren 30 hari, performa dan laba per
+produk, rincian barang per transaksi, kategori teratas, metode pembayaran, stok kritis,
+supplier, serta pembelian. Ringkasan angka memakai service agregasi yang sama dengan
+laporan admin; Gemini hanya menjelaskan angka tersebut dan tidak menghitung ulang.
+Jawaban Gemini dikirim secara streaming dan riwayatnya disimpan di database per akun admin. Endpoint
 chat membutuhkan permission `admin.ceo_chat`, yang secara default hanya dimiliki
 role Pemilik.
 
@@ -123,6 +125,8 @@ operasional lama, lalu membangun satu tahun histori baru memakai produk eKomart.
 | `PUT` | `/api/v1/admin/staff/{id}/role` | Ubah role petugas |
 | `GET` | `/api/v1/admin/live-transactions` | Snapshot workflow kasir terkini |
 | `GET` | `/api/v1/admin/live-transactions/stream` | Stream NDJSON transaksi realtime |
+| `GET` | `/api/v1/admin/reports/sales` | Laporan harian/bulanan, performa produk, dan detail transaksi |
+| `GET` | `/api/v1/admin/sales` | Cari transaksi termasuk berdasarkan nama/barcode produk |
 | `GET` | `/api/v1/admin/ceo-chat/status` | Status koneksi Gemini |
 | `GET/POST` | `/api/v1/admin/ceo-chat/conversations` | Riwayat/buat chat CEO |
 | `POST` | `/api/v1/admin/ceo-chat/conversations/{id}/messages` | Jawaban Gemini streaming |

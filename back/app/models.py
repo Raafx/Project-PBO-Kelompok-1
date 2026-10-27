@@ -373,11 +373,16 @@ class SaleItem(Base):
     barcode: Mapped[str] = mapped_column(String(40), nullable=False)
     product_name: Mapped[str] = mapped_column(String(180), nullable=False)
     unit_price: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    unit_cost: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     discount: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     subtotal: Mapped[int] = mapped_column(BigInteger, nullable=False)
 
     sale: Mapped[Sale] = relationship(back_populates="items")
+
+    @property
+    def gross_profit(self) -> int:
+        return self.subtotal - (self.unit_cost * self.quantity)
 
 
 class Payment(Base):

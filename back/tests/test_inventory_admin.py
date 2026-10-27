@@ -2,7 +2,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import AccessRole, Cashier
+from app.models import AccessRole, Cashier, Product
 
 
 def test_admin_dashboard_uses_seeded_inventory(client: TestClient) -> None:
@@ -175,7 +175,9 @@ def test_manual_adjustment_cannot_make_stock_negative(client: TestClient) -> Non
     assert accepted.json()["balance_after"] == product["stock"] - 2
 
 
-def test_admin_sales_and_report_use_completed_pos_transactions(client: TestClient) -> None:
+def test_admin_sales_and_report_use_completed_pos_transactions(
+    client: TestClient, session: Session
+) -> None:
     checkout = client.post(
         "/api/v1/sales/checkout",
         json={
@@ -196,6 +198,13 @@ def test_admin_sales_and_report_use_completed_pos_transactions(client: TestClien
     assert sales.json()[0]["transaction_no"] == checkout.json()["transaction_no"]
     assert sales.json()[0]["payment_method"] == "qris"
     assert sales.json()[0]["cashier_name"] == "Athasyahri"
+    assert sales.json()[0]["items"][0]["product_name"] == "Nestle Cerelac Mixed Fruits & Wheat 400g"
+    assert sales.json()[0]["items"][0]["gross_profit"] == 35_800
+    assert sales.json()[0]["gross_profit"] == 35_800
+
+    searched = client.get("/api/v1/admin/sales", params={"search": "Cerelac"})
+    assert searched.status_code == 200
+    assert [sale["id"] for sale in searched.json()] == [checkout.json()["id"]]
 
     report = client.get("/api/v1/admin/reports/sales")
     assert report.status_code == 200
@@ -207,6 +216,21 @@ def test_admin_sales_and_report_use_completed_pos_transactions(client: TestClien
     assert payload["estimated_gross_profit"] == 35_800
     assert payload["payment_methods"] == [{"label": "qris", "amount": 145_800, "count": 1}]
     assert payload["top_products"][0]["quantity"] == 2
+    assert payload["top_products"][0]["gross_profit"] == 35_800
+    assert payload["product_performance"][0]["net_revenue"] == 145_800
+    assert payload["product_performance"][0]["cost_of_goods"] == 110_000
+    assert payload["product_performance"][0]["gross_profit"] == 35_800
+    assert payload["daily_sales"][-1]["gross_profit"] == 35_800
+    assert payload["monthly_sales"][-1]["gross_profit"] == 35_800
+    assert payload["transactions"][0]["items"][0]["quantity"] == 2
+
+    product = session.get(Product, checkout.json()["items"][0]["product_id"])
+    assert product is not None
+    product.cost_price = 1
+    session.commit()
+    unchanged = client.get("/api/v1/admin/reports/sales").json()
+    assert unchanged["estimated_gross_profit"] == 35_800
+    assert unchanged["product_performance"][0]["gross_profit"] == 35_800
 
 
 def test_role_permissions_limit_admin_pages(client: TestClient, session: Session) -> None:

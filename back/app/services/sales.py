@@ -131,6 +131,7 @@ def _build_items(
                 barcode=product.barcode,
                 product_name=product.name,
                 unit_price=product.price,
+                unit_cost=product.cost_price,
                 quantity=quantity,
                 discount=discount,
                 subtotal=line_total - discount,

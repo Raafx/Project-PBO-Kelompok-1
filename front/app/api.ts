@@ -392,6 +392,7 @@ export type AdminSale = {
   total: number;
   discount: number;
   item_count: number;
+  gross_profit: number;
   created_at: string;
   cashier_name: string;
   member_name: string | null;
@@ -404,6 +405,17 @@ export type AdminSale = {
     | "wallet"
     | "voucher"
     | null;
+  items: Array<{
+    product_id: string;
+    barcode: string;
+    product_name: string;
+    unit_price: number;
+    unit_cost: number;
+    quantity: number;
+    discount: number;
+    subtotal: number;
+    gross_profit: number;
+  }>;
 };
 
 export type SalesReport = {
@@ -419,6 +431,13 @@ export type SalesReport = {
     date: string;
     total_sales: number;
     transaction_count: number;
+    gross_profit: number;
+  }>;
+  monthly_sales: Array<{
+    month: string;
+    total_sales: number;
+    transaction_count: number;
+    gross_profit: number;
   }>;
   payment_methods: Array<{ label: string; amount: number; count: number }>;
   category_sales: Array<{ label: string; amount: number; count: number }>;
@@ -427,8 +446,28 @@ export type SalesReport = {
     name: string;
     quantity: number;
     revenue: number;
+    transaction_count: number;
+    gross_profit: number;
+    margin_percentage: number;
+  }>;
+  product_performance: Array<{
+    product_id: string;
+    barcode: string;
+    name: string;
+    category: string;
+    image_url: string | null;
+    transaction_count: number;
+    quantity: number;
+    gross_revenue: number;
+    discount: number;
+    net_revenue: number;
+    cost_of_goods: number;
+    gross_profit: number;
+    margin_percentage: number;
+    average_unit_price: number;
   }>;
   recent_sales: AdminSale[];
+  transactions: AdminSale[];
 };
 
 export type LiveTransactionStatus =
