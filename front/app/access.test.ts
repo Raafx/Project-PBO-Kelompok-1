@@ -19,6 +19,16 @@ describe("role-based access routing", () => {
     );
   });
 
+  it("mengarahkan staf gudang ke admin dengan menu sesuai permission", () => {
+    expect(
+      defaultPathForPermissions([
+        "admin.overview",
+        "admin.stock",
+        "admin.purchasing",
+      ]),
+    ).toBe("/admin");
+  });
+
   it("menolak tujuan next yang tidak sesuai permission", () => {
     const permissions = ["pos.access", "admin.sales"];
 

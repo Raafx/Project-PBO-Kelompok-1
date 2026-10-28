@@ -13,7 +13,7 @@ def heartbeat_payload(session_id: str, status: str = "shopping") -> dict[str, ob
         "store_code": "MY-001",
         "cashier_code": "KASIR03",
         "status": status,
-        "items": [{"barcode": "8997000400001", "quantity": 2}],
+        "items": [{"barcode": "0089686010947", "quantity": 2}],
         "payment_method": "cash",
         "payment_ready": False,
         "member_phone": "081255449011",

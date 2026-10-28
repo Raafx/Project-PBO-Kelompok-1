@@ -26,7 +26,7 @@ PERMISSION_CATALOG: dict[str, str] = {
 }
 
 DEFAULT_ROLE_PERMISSIONS: dict[str, tuple[str, str, set[str]]] = {
-    "OWNER": ("Pemilik", "owner", set(PERMISSION_CATALOG)),
+    "OWNER": ("Administrator", "owner", set(PERMISSION_CATALOG)),
     "MANAGER": (
         "Manajer",
         "manager",
@@ -76,6 +76,7 @@ def ensure_default_roles(session: Session) -> dict[str, AccessRole]:
             session.add(role)
             roles[code] = role
         elif code == "OWNER":
+            role.name = name
             existing = permission_values(role)
             role.permissions.extend(
                 RolePermission(permission=value) for value in sorted(permissions - existing)

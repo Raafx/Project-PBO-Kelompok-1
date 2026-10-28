@@ -1,7 +1,7 @@
 import "./adminto.scss";
 
-import AdminAuthGuard from "./AdminAuthGuard";
+import PemeriksaAksesAdmin from "./PemeriksaAksesAdmin";
 
 export default function AdminLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <AdminAuthGuard>{children}</AdminAuthGuard>;
+  return <PemeriksaAksesAdmin>{children}</PemeriksaAksesAdmin>;
 }

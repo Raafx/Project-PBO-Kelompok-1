@@ -14,7 +14,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.database import Base, SessionLocal
-from app.ekomart_catalog import sync_ekomart_catalog
+from app.indonesia_catalog import sync_indonesian_catalog
 from app.models import (
     AccessRole,
     AuditLog,
@@ -116,6 +116,18 @@ SUPPLIER_ADDRESSES = {
 }
 
 SUPPLIER_BY_CATEGORY = {
+    "Mie & Pasta": "SUP-001",
+    "Air Mineral": "SUP-002",
+    "Minuman Teh": "SUP-002",
+    "Minuman Isotonik": "SUP-002",
+    "Minuman Jus": "SUP-002",
+    "Kopi & Minuman": "SUP-002",
+    "Biskuit & Wafer": "SUP-006",
+    "Camilan": "SUP-006",
+    "Bahan Pokok": "SUP-005",
+    "Sirup": "SUP-002",
+    "Keju": "SUP-002",
+    "Roti": "SUP-003",
     "Makanan Bayi": "SUP-001",
     "Susu Formula": "SUP-001",
     "Susu & Olahan": "SUP-002",
@@ -239,9 +251,7 @@ def _seed_master_data(
             )
         else:
             cashier.totp_required = False
-            cashier.password_hash = cashier.password_hash or hash_secret(
-                DEMO_CASHIER_PASSWORD
-            )
+            cashier.password_hash = cashier.password_hash or hash_secret(DEMO_CASHIER_PASSWORD)
             cashier.pin_hash = cashier.pin_hash or hash_secret(DEMO_CASHIER_PIN)
 
     for phone, full_name, tier, points in DEMO_MEMBERS:
@@ -737,7 +747,7 @@ def backup_database(session: Session, output_path: Path) -> Path:
 
 
 def reset_operational_data(session: Session) -> None:
-    """Hapus data katalog/transaksi lama lalu siapkan ulang katalog eKomart."""
+    """Hapus data katalog/transaksi lama lalu siapkan katalog Indonesia."""
     deletion_order = (
         CeoChatMessage,
         CeoChatSession,
@@ -763,7 +773,7 @@ def reset_operational_data(session: Session) -> None:
     for model in deletion_order:
         session.execute(delete(model))
     session.flush()
-    sync_ekomart_catalog(session, archive_others=False)
+    sync_indonesian_catalog(session, archive_others=False)
     session.flush()
 
 
@@ -866,7 +876,7 @@ def main() -> None:
     parser.add_argument(
         "--reset",
         action="store_true",
-        help="ganti katalog dan seluruh data operasional dengan data eKomart",
+        help="ganti katalog dan seluruh data operasional dengan produk Indonesia",
     )
     parser.add_argument(
         "--no-backup",
@@ -878,8 +888,10 @@ def main() -> None:
     backup_path = None
     if args.reset and not args.no_backup:
         timestamp = datetime.now(LOCAL_TIMEZONE).strftime("%Y%m%d-%H%M%S")
-        backup_path = Path(__file__).resolve().parents[1] / "backups" / (
-            f"pre-ekomart-{timestamp}.json"
+        backup_path = (
+            Path(__file__).resolve().parents[1]
+            / "backups"
+            / (f"pre-indonesia-catalog-{timestamp}.json")
         )
 
     with SessionLocal() as session:

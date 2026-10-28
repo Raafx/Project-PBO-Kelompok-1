@@ -51,6 +51,24 @@ describe("alur keyboard POS", () => {
     expect(within(paymentMethods).getByRole("radio", { name: /tunai/i })).toBeInTheDocument();
     expect(within(paymentMethods).getByRole("radio", { name: /qris/i })).toBeInTheDocument();
     expect(within(paymentMethods).getByRole("radio", { name: /edc/i })).toBeInTheDocument();
+    expect(within(paymentMethods).queryByText("Cash")).not.toBeInTheDocument();
+    expect(within(paymentMethods).queryByText("No. approval")).not.toBeInTheDocument();
+    expect(within(paymentMethods).queryByText("Debit / Kredit")).not.toBeInTheDocument();
+  });
+
+  it("menghilangkan teks mikro tetapi mempertahankan kontrol pembayaran", async () => {
+    const user = userEvent.setup();
+    render(<PosPage />);
+
+    expect(screen.queryByText("Mie & Pasta")).not.toBeInTheDocument();
+    expect(screen.queryByText("0089686010947")).not.toBeInTheDocument();
+    expect(screen.queryByText(/72 stok/i)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("radio", { name: /edc/i }));
+    expect(screen.queryByText(/12–19 digit/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^wajib$/i)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/nomor kartu edc/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/nomor approval edc/i)).toBeInTheDocument();
   });
 
   it("menempatkan enam tab stop utama dalam urutan transaksi", async () => {
@@ -83,13 +101,13 @@ describe("alur keyboard POS", () => {
     grid.focus();
 
     fireEvent.keyDown(grid, { key: "ArrowUp" });
-    const mandarinRow = screen.getByRole("row", {
-      name: /Jeruk Mandarin/i,
+    const previousProductRow = screen.getByRole("row", {
+      name: /AQUA Air Mineral/i,
     });
-    expect(mandarinRow).toHaveAttribute("aria-selected", "true");
+    expect(previousProductRow).toHaveAttribute("aria-selected", "true");
     fireEvent.keyDown(grid, { key: "3" });
     fireEvent.keyDown(grid, { key: "Enter" });
-    expect(within(mandarinRow).getByText("3")).toBeInTheDocument();
+    expect(within(previousProductRow).getByText("3")).toBeInTheDocument();
   });
 
   it("menjalankan shortcut registry tanpa kombinasi browser yang dilarang", async () => {
@@ -124,10 +142,10 @@ describe("alur keyboard POS", () => {
     render(<PosPage />);
     const scan = screen.getByRole("textbox", { name: /scan barcode/i });
 
-    fireEvent.change(scan, { target: { value: "3*8997000400001" } });
+    fireEvent.change(scan, { target: { value: "3*0089686010947" } });
     fireEvent.keyDown(scan, { key: "Enter" });
 
-    const row = screen.getByRole("row", { name: /Nestle Cerelac/i });
+    const row = screen.getByRole("row", { name: /Indomie Mi Goreng Original/i });
     expect(within(row).getByText("7")).toBeInTheDocument();
   });
 
@@ -138,11 +156,11 @@ describe("alur keyboard POS", () => {
     cash.focus();
     expect(cash).toHaveValue("200.000");
 
-    dispatchScannerBurst(cash, "8997000400007");
+    dispatchScannerBurst(cash, "8996001600146");
 
     expect(
       screen.getByRole("row", {
-        name: /Kellogg's Multigrain Chocos/i,
+        name: /Teh Pucuk Harum/i,
       }),
     ).toBeInTheDocument();
     expect(cash).toHaveValue("200.000");

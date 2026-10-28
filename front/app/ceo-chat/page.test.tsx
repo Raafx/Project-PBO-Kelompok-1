@@ -7,6 +7,7 @@ import CeoChatPage from "./page";
 const api = vi.hoisted(() => ({
   loadStatus: vi.fn(),
   loadConversations: vi.fn(),
+  loadConversation: vi.fn(),
   createConversation: vi.fn(),
   deleteConversation: vi.fn(),
   streamMessage: vi.fn(),
@@ -15,6 +16,7 @@ const api = vi.hoisted(() => ({
 vi.mock("../api", () => ({
   loadCeoChatStatus: api.loadStatus,
   loadCeoChatConversations: api.loadConversations,
+  loadCeoChatConversation: api.loadConversation,
   createCeoChatConversation: api.createConversation,
   deleteCeoChatConversation: api.deleteConversation,
   streamCeoChatMessage: api.streamMessage,
@@ -31,6 +33,12 @@ describe("halaman CEO Copilot", () => {
       context_source: "Database operasional MYMARKET",
     });
     api.loadConversations.mockResolvedValue([]);
+    api.loadConversation.mockResolvedValue({
+      id: "conversation-markdown",
+      title: "Transaksi hari ini",
+      updated_at: "2026-10-08T10:00:00Z",
+      messages: [],
+    });
     api.createConversation.mockResolvedValue({
       id: "conversation-1",
       title: "Percakapan baru",
@@ -85,13 +93,18 @@ describe("halaman CEO Copilot", () => {
       id: "conversation-markdown",
       title: "Transaksi hari ini",
       updated_at: "2026-10-08T10:00:00Z",
+    }]);
+    api.loadConversation.mockResolvedValue({
+      id: "conversation-markdown",
+      title: "Transaksi hari ini",
+      updated_at: "2026-10-08T10:00:00Z",
       messages: [{
         id: "assistant-markdown",
         role: "assistant",
         content: "**Hari ini** belum ada transaksi.\n* Omzet Rp0\n* Transaksi 0",
         created_at: "2026-10-08T10:00:00Z",
       }],
-    }]);
+    });
 
     render(<CeoChatPage />);
 
@@ -104,5 +117,32 @@ describe("halaman CEO Copilot", () => {
     expect(screen.queryByText(/tidak dapat mengubah transaksi/i)).not.toBeInTheDocument();
     expect(screen.queryByAltText("CEO")).not.toBeInTheDocument();
     expect(screen.queryByText("gemini-test")).not.toBeInTheDocument();
+  });
+
+  it("menghentikan indikator mengetik dan memuat ulang riwayat saat respons terputus", async () => {
+    api.streamMessage.mockImplementation(async (_id, _message, onEvent) => {
+      onEvent({ type: "delta", text: "Jawaban yang terputus" });
+      throw new Error("Jawaban terputus sebelum selesai. Coba lagi.");
+    });
+    api.loadConversation.mockResolvedValue({
+      id: "conversation-1",
+      title: "Performa hari ini",
+      updated_at: "2026-10-08T10:01:00Z",
+      messages: [{
+        id: "user-1",
+        role: "user",
+        content: "Bagaimana performa penjualan hari ini?",
+        created_at: "2026-10-08T10:01:00Z",
+      }],
+    });
+
+    const user = userEvent.setup();
+    render(<CeoChatPage />);
+    await user.click(await screen.findByRole("button", { name: /performa hari ini/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Jawaban terputus");
+    expect(screen.queryByText("Jawaban yang terputus")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Asisten sedang menjawab")).not.toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Pesan untuk asisten" })).toBeEnabled();
   });
 });

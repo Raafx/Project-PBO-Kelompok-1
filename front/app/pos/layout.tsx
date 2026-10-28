@@ -1,7 +1,7 @@
-import RoleGuard from "../RoleGuard";
+import PemeriksaPeran from "../PemeriksaPeran";
 
 export default function PosLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  return <RoleGuard area="pos">{children}</RoleGuard>;
+  return <PemeriksaPeran area="pos">{children}</PemeriksaPeran>;
 }

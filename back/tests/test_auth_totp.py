@@ -43,6 +43,30 @@ def test_cashier_login_never_requires_totp(
     assert login.json()["challenge_token"] is None
 
 
+def test_seeded_role_accounts_use_requested_emails_and_password(client: TestClient) -> None:
+    cashier = client.post(
+        "/api/v1/auth/login",
+        json={"identity": "kasir@gmail.com", "password": "password"},
+    )
+    assert cashier.status_code == 200
+    assert cashier.json()["status"] == "authenticated"
+    assert cashier.json()["employee_code"] == "KASIR"
+    assert cashier.json()["role_name"] == "Kasir"
+    assert "pos.access" in cashier.json()["permissions"]
+    assert "admin.overview" not in cashier.json()["permissions"]
+
+    warehouse = client.post(
+        "/api/v1/auth/login",
+        json={"identity": "gudang@gmail.com", "password": "password"},
+    )
+    assert warehouse.status_code == 200
+    assert warehouse.json()["status"] == "totp_setup_required"
+    assert warehouse.json()["employee_code"] == "GUDANG"
+    assert warehouse.json()["role_name"] == "Staf Gudang"
+    assert "admin.stock" in warehouse.json()["permissions"]
+    assert "pos.access" not in warehouse.json()["permissions"]
+
+
 def test_admin_enrolls_authenticator_before_first_session(client: TestClient) -> None:
     login = client.post(
         "/api/v1/auth/login",
@@ -54,6 +78,7 @@ def test_admin_enrolls_authenticator_before_first_session(client: TestClient) ->
     assert challenge["access_token"] is None
     assert challenge["challenge_token"]
     assert challenge["totp_secret"]
+    assert challenge["role_name"] == "Administrator"
     assert challenge["provisioning_uri"].startswith("otpauth://totp/MYMARKET:")
 
     valid_code = _current_code(challenge["totp_secret"])

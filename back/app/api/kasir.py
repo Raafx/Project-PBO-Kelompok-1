@@ -1,3 +1,9 @@
+"""URL API untuk layar kasir: cari produk, pelanggan, voucher, dan transaksi.
+
+Fungsi di file ini menerima HTTP. Aturan hitung dan simpan penjualan ada di
+`app/services/sales.py`, agar endpoint tetap mudah dibaca.
+"""
+
 from __future__ import annotations
 
 from typing import Annotated

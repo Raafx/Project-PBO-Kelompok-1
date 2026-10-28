@@ -427,17 +427,24 @@ export type SalesReport = {
   average_transaction: number;
   total_discount: number;
   estimated_gross_profit: number;
+  cost_of_goods: number;
+  expenses: number;
+  net_profit: number;
   daily_sales: Array<{
     date: string;
     total_sales: number;
     transaction_count: number;
     gross_profit: number;
+    expenses: number;
+    net_profit: number;
   }>;
   monthly_sales: Array<{
     month: string;
     total_sales: number;
     transaction_count: number;
     gross_profit: number;
+    expenses: number;
+    net_profit: number;
   }>;
   payment_methods: Array<{ label: string; amount: number; count: number }>;
   category_sales: Array<{ label: string; amount: number; count: number }>;
@@ -553,6 +560,8 @@ export type CeoChatConversation = {
   messages: CeoChatMessage[];
 };
 
+export type CeoChatConversationSummary = Omit<CeoChatConversation, "messages">;
+
 export type CeoChatStreamEvent =
   | { type: "user_message"; message: CeoChatMessage; title: string }
   | { type: "delta"; text: string }
@@ -580,7 +589,7 @@ function adminAuthorizationHeaders(): Record<string, string> {
   return allowDevActor ? { "X-Actor-Code": adminActorCode } : {};
 }
 
-async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
+export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   if (!configuredBaseUrl) throw new Error("API backend belum dikonfigurasi");
   const controller = new AbortController();
   const sourceSignal = init?.signal;
@@ -862,8 +871,27 @@ export function loadMyAccess() {
   return apiRequest<AccessProfile>("/admin/access/me");
 }
 
-export function loadAdminSales() {
-  return apiRequest<AdminSale[]>("/admin/sales?limit=300");
+export function loadAdminSales(filters: {
+  dateFrom?: string;
+  dateTo?: string;
+  status?: string;
+  paymentMethod?: string;
+  productId?: string;
+  search?: string;
+  limit?: number;
+  offset?: number;
+} = {}) {
+  const params = new URLSearchParams();
+  if (filters.dateFrom) params.set("date_from", filters.dateFrom);
+  if (filters.dateTo) params.set("date_to", filters.dateTo);
+  if (filters.status && filters.status !== "all") params.set("status", filters.status);
+  if (filters.paymentMethod && filters.paymentMethod !== "all")
+    params.set("payment_method", filters.paymentMethod);
+  if (filters.productId) params.set("product_id", filters.productId);
+  if (filters.search?.trim()) params.set("search", filters.search.trim());
+  params.set("limit", String(filters.limit ?? 100));
+  if (filters.offset) params.set("offset", String(filters.offset));
+  return apiRequest<AdminSale[]>(`/admin/sales?${params.toString()}`);
 }
 
 export function loadSalesReport(dateFrom?: string, dateTo?: string) {
@@ -1327,7 +1355,13 @@ export function loadCeoChatStatus() {
 }
 
 export function loadCeoChatConversations() {
-  return apiRequest<CeoChatConversation[]>("/admin/ceo-chat/conversations");
+  return apiRequest<CeoChatConversationSummary[]>("/admin/ceo-chat/conversations");
+}
+
+export function loadCeoChatConversation(id: string) {
+  return apiRequest<CeoChatConversation>(
+    `/admin/ceo-chat/conversations/${encodeURIComponent(id)}`,
+  );
 }
 
 export function createCeoChatConversation(title = "Percakapan baru") {
@@ -1390,17 +1424,27 @@ export async function streamCeoChatMessage(
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
+    let completed = false;
     while (true) {
       const { done, value } = await reader.read();
       buffer += decoder.decode(value, { stream: !done });
       const lines = buffer.split("\n");
       buffer = lines.pop() || "";
       for (const line of lines) {
-        if (line.trim()) onEvent(JSON.parse(line) as CeoChatStreamEvent);
+        if (line.trim()) {
+          const event = JSON.parse(line) as CeoChatStreamEvent;
+          if (event.type === "done") completed = true;
+          onEvent(event);
+        }
       }
       if (done) break;
     }
-    if (buffer.trim()) onEvent(JSON.parse(buffer) as CeoChatStreamEvent);
+    if (buffer.trim()) {
+      const event = JSON.parse(buffer) as CeoChatStreamEvent;
+      if (event.type === "done") completed = true;
+      onEvent(event);
+    }
+    if (!completed) throw new Error("Jawaban terputus sebelum selesai. Coba lagi.");
   } catch (error) {
     if (timedOut)
       throw new Error("Asisten belum merespons dalam 30 detik. Silakan coba lagi.");

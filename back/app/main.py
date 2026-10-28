@@ -8,10 +8,12 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.api.admin import router as admin_router
+from app.api.analisis_produk import router as analisis_produk_router
 from app.api.ceo_chat import router as ceo_chat_router
-from app.api.live_transactions import router as live_transactions_router
-from app.api.operations import router as operations_router
-from app.api.routes import router
+from app.api.kasir import router as kasir_router
+from app.api.laporan_penjualan import router as laporan_penjualan_router
+from app.api.operasional_toko import router as operasional_toko_router
+from app.api.transaksi_langsung import router as transaksi_langsung_router
 from app.config import get_settings
 from app.database import get_db
 
@@ -31,11 +33,15 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization", "X-Actor-Code", "X-Idempotency-Key"],
 )
-app.include_router(router, prefix=settings.api_prefix)
-app.include_router(operations_router, prefix=settings.api_prefix)
+# Setiap file di folder api/ menangani kelompok URL yang berbeda.
+# Contoh: kasir.py menangani produk dan checkout, analisis_produk.py menangani grafik produk.
+app.include_router(kasir_router, prefix=settings.api_prefix)
+app.include_router(operasional_toko_router, prefix=settings.api_prefix)
 app.include_router(admin_router, prefix=settings.api_prefix)
+app.include_router(laporan_penjualan_router, prefix=settings.api_prefix)
+app.include_router(analisis_produk_router, prefix=settings.api_prefix)
 app.include_router(ceo_chat_router, prefix=settings.api_prefix)
-app.include_router(live_transactions_router, prefix=settings.api_prefix)
+app.include_router(transaksi_langsung_router, prefix=settings.api_prefix)
 
 
 @app.get("/")

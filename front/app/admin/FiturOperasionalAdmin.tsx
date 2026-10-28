@@ -1,5 +1,7 @@
 "use client";
 
+// Modul admin tambahan: shift, katalog, stok, pembelian, pelanggan, keuangan, pengaturan.
+
 import { Icon } from "@iconify/react";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -50,9 +52,9 @@ import {
   type Supplier,
   type StockMovement,
 } from "../api";
-import SearchableSelect from "../SearchableSelect";
+import PilihanCari from "../PilihanCari";
 
-export type OperationsTab =
+export type TabOperasional =
   | "cashier"
   | "catalog"
   | "inventory"
@@ -99,7 +101,7 @@ function FieldCard({
   );
 }
 
-export default function OperationsCenter({
+export default function FiturOperasionalAdmin({
   activeTab,
   products,
   suppliers,
@@ -107,7 +109,7 @@ export default function OperationsCenter({
   roles,
   onChanged,
 }: {
-  activeTab: OperationsTab;
+  activeTab: TabOperasional;
   products: MasterProduct[];
   suppliers: Supplier[];
   orders: PurchaseOrder[];
@@ -500,7 +502,7 @@ export default function OperationsCenter({
                 onSubmit={submitCatalog}
                 className="d-flex flex-column gap-3"
               >
-                <SearchableSelect
+                <PilihanCari
                   value={catalog.kind}
                   onChange={(event) =>
                     setCatalog({ ...catalog, kind: event.target.value })
@@ -509,7 +511,7 @@ export default function OperationsCenter({
                   <option value="category">Kategori</option>
                   <option value="unit">Satuan / konversi</option>
                   <option value="brand">Merek</option>
-                </SearchableSelect>
+                </PilihanCari>
                 <Form.Control
                   placeholder="Kode"
                   value={catalog.code}
@@ -588,7 +590,7 @@ export default function OperationsCenter({
                     />
                   </Col>
                   <Col md={6}>
-                    <SearchableSelect
+                    <PilihanCari
                       value={promotion.promotion_type}
                       onChange={(event) =>
                         setPromotion({
@@ -601,10 +603,10 @@ export default function OperationsCenter({
                       <option value="fixed">Potongan nominal / item</option>
                       <option value="wholesale">Harga grosir</option>
                       <option value="buy_x_get_y">Beli X gratis Y</option>
-                    </SearchableSelect>
+                    </PilihanCari>
                   </Col>
                   <Col md={6}>
-                    <SearchableSelect
+                    <PilihanCari
                       value={promotion.product_id}
                       onChange={(event) =>
                         setPromotion({
@@ -619,7 +621,7 @@ export default function OperationsCenter({
                           {item.name}
                         </option>
                       ))}
-                    </SearchableSelect>
+                    </PilihanCari>
                   </Col>
                   <Col md={4}>
                     <Form.Control
@@ -735,7 +737,7 @@ export default function OperationsCenter({
               title="Label & data produk"
               copy="Cetak harga/barcode atau pindahkan master lewat Excel."
             >
-              <SearchableSelect
+              <PilihanCari
                 value={count.product_id}
                 onChange={(event) =>
                   setCount({ ...count, product_id: event.target.value })
@@ -747,7 +749,7 @@ export default function OperationsCenter({
                     {item.name}
                   </option>
                 ))}
-              </SearchableSelect>
+              </PilihanCari>
               <div className="d-grid gap-2">
                 <Button onClick={printLabel}>
                   <Icon icon="solar:printer-2-linear" className="me-1" />
@@ -810,7 +812,7 @@ export default function OperationsCenter({
                 }}
                 className="d-flex flex-column gap-2"
               >
-                <SearchableSelect
+                <PilihanCari
                   value={count.product_id}
                   onChange={(event) => {
                     const selected = products.find(
@@ -831,8 +833,8 @@ export default function OperationsCenter({
                       {item.name}
                     </option>
                   ))}
-                </SearchableSelect>
-                <SearchableSelect
+                </PilihanCari>
+                <PilihanCari
                   value={count.stock_area}
                   onChange={(event) =>
                     setCount({ ...count, stock_area: event.target.value })
@@ -840,7 +842,7 @@ export default function OperationsCenter({
                 >
                   <option value="sales">Rak / kasir</option>
                   <option value="warehouse">Gudang</option>
-                </SearchableSelect>
+                </PilihanCari>
                 <Form.Control
                   type="number"
                   min="0"
@@ -880,7 +882,7 @@ export default function OperationsCenter({
                 }}
                 className="d-flex flex-column gap-2"
               >
-                <SearchableSelect
+                <PilihanCari
                   value={batch.product_id}
                   onChange={(event) =>
                     setBatch({ ...batch, product_id: event.target.value })
@@ -891,7 +893,7 @@ export default function OperationsCenter({
                       {item.name}
                     </option>
                   ))}
-                </SearchableSelect>
+                </PilihanCari>
                 <Form.Control
                   placeholder="Nomor batch"
                   value={batch.batch_no}
@@ -1091,7 +1093,7 @@ export default function OperationsCenter({
                 }}
                 className="d-flex flex-column gap-2"
               >
-                <SearchableSelect
+                <PilihanCari
                   value={purchase.supplier_id}
                   onChange={(event) =>
                     setPurchase({
@@ -1105,8 +1107,8 @@ export default function OperationsCenter({
                       {item.name}
                     </option>
                   ))}
-                </SearchableSelect>
-                <SearchableSelect
+                </PilihanCari>
+                <PilihanCari
                   value={purchase.barcode}
                   onChange={(event) => {
                     const selected = products.find(
@@ -1124,7 +1126,7 @@ export default function OperationsCenter({
                       {item.name}
                     </option>
                   ))}
-                </SearchableSelect>
+                </PilihanCari>
                 <Row>
                   <Col>
                     <Form.Control
@@ -1273,7 +1275,7 @@ export default function OperationsCenter({
                 }}
                 className="d-flex flex-column gap-2"
               >
-                <SearchableSelect
+                <PilihanCari
                   value={purchaseReturn.product_id}
                   onChange={(event) =>
                     setPurchaseReturn({
@@ -1287,8 +1289,8 @@ export default function OperationsCenter({
                       {item.name} · gudang {item.warehouse_stock}
                     </option>
                   ))}
-                </SearchableSelect>
-                <SearchableSelect
+                </PilihanCari>
+                <PilihanCari
                   value={purchaseReturn.supplier_id}
                   onChange={(event) =>
                     setPurchaseReturn({
@@ -1302,7 +1304,7 @@ export default function OperationsCenter({
                       {item.name}
                     </option>
                   ))}
-                </SearchableSelect>
+                </PilihanCari>
                 <Form.Control
                   type="number"
                   min="1"
@@ -1402,7 +1404,7 @@ export default function OperationsCenter({
                   }
                   required
                 />
-                <SearchableSelect
+                <PilihanCari
                   value={member.tier}
                   onChange={(event) =>
                     setMember({ ...member, tier: event.target.value })
@@ -1411,7 +1413,7 @@ export default function OperationsCenter({
                   <option>REGULAR</option>
                   <option>SILVER</option>
                   <option>GOLD</option>
-                </SearchableSelect>
+                </PilihanCari>
                 <Button type="submit" disabled={working}>
                   Tambah member
                 </Button>
@@ -1505,7 +1507,7 @@ export default function OperationsCenter({
                 }}
                 className="d-flex flex-column gap-2"
               >
-                <SearchableSelect
+                <PilihanCari
                   value={finance.entry_type}
                   onChange={(event) =>
                     setFinance({ ...finance, entry_type: event.target.value })
@@ -1516,7 +1518,7 @@ export default function OperationsCenter({
                   <option value="reconciliation">Rekonsiliasi non-tunai</option>
                   <option value="receivable">Piutang / kasbon</option>
                   <option value="payable">Hutang supplier</option>
-                </SearchableSelect>
+                </PilihanCari>
                 <Form.Control
                   placeholder="Pihak terkait"
                   value={finance.counterparty}
@@ -1629,13 +1631,17 @@ export default function OperationsCenter({
 
       {snapshot && report && tab === "reports" ? (
         <>
+          <div className="mb-3">
+            <h4 className="mb-1">Operasional bulan berjalan</h4>
+            <p className="text-muted mb-0">Ringkasan tambahan untuk bulan ini; periode laporan di atas dapat dipilih secara terpisah.</p>
+          </div>
           <Row className="g-3 mb-3">
             {[
               ["Omzet bulan ini", report.revenue, "primary"],
               ["Laba kotor", report.gross_profit, "success"],
               ["Pengeluaran", report.expenses, "danger"],
               [
-                "Laba bersih",
+                "Laba / rugi operasional",
                 report.net_profit,
                 report.net_profit >= 0 ? "success" : "danger",
               ],
@@ -1804,7 +1810,7 @@ export default function OperationsCenter({
                   }
                   required
                 />
-                <SearchableSelect
+                <PilihanCari
                   value={setting.group_name}
                   onChange={(event) =>
                     setSetting({ ...setting, group_name: event.target.value })
@@ -1815,7 +1821,7 @@ export default function OperationsCenter({
                   <option value="receipt">Struk & printer</option>
                   <option value="branch">Cabang</option>
                   <option value="general">Umum</option>
-                </SearchableSelect>
+                </PilihanCari>
                 <Form.Control
                   placeholder="Label"
                   value={setting.label}
@@ -1971,7 +1977,7 @@ export default function OperationsCenter({
                   }
                   required
                 />
-                <SearchableSelect
+                <PilihanCari
                   value={staff.role_id}
                   onChange={(event) =>
                     setStaff({ ...staff, role_id: event.target.value })
@@ -1982,7 +1988,7 @@ export default function OperationsCenter({
                       {item.name}
                     </option>
                   ))}
-                </SearchableSelect>
+                </PilihanCari>
                 <Button type="submit" disabled={working}>
                   Buat akun
                 </Button>

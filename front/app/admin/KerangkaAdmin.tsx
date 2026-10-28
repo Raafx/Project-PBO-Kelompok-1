@@ -1,5 +1,6 @@
 "use client";
 
+// Kerangka yang sama untuk semua menu admin: sidebar, header, dan area konten.
 import { Icon } from "@iconify/react";
 import Image from "next/image";
 import Link from "next/link";
@@ -8,16 +9,16 @@ import { Card, Col, Dropdown, Modal, Row } from "react-bootstrap";
 import SimpleBar from "simplebar-react";
 import { logoutAccount } from "../api";
 
-type NavigationItem = {
+type MenuSamping = {
   id: string;
   label: string;
   icon: string;
 };
 
-type AdmintoShellProps = {
+type PropertiKerangkaAdmin = {
   children: ReactNode;
   title: string;
-  navigation: NavigationItem[];
+  navigation: MenuSamping[];
   activeView: string;
   fullName?: string;
   roleName?: string;
@@ -28,7 +29,7 @@ type AdmintoShellProps = {
   onView: (view: string) => void;
 };
 
-function LogoBox() {
+function KotakLogo() {
   return (
     <Link href="/admin" className="logo">
       <span className="logo-light">
@@ -79,7 +80,7 @@ function LogoBox() {
   );
 }
 
-export default function AdmintoShell({
+export default function KerangkaAdmin({
   children,
   title,
   navigation,
@@ -91,7 +92,7 @@ export default function AdmintoShell({
   showCeoCopilot = false,
   showPos = false,
   onView,
-}: AdmintoShellProps) {
+}: PropertiKerangkaAdmin) {
   const topbarRef = useRef<HTMLElement | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -161,7 +162,7 @@ export default function AdmintoShell({
       <header ref={topbarRef} className="app-topbar" id="header">
         <div className="page-container topbar-menu">
           <div className="d-flex align-items-center gap-2">
-            <LogoBox />
+            <KotakLogo />
             <button
               onClick={toggleSidebar}
               className="sidenav-toggle-button px-2"
@@ -376,7 +377,7 @@ export default function AdmintoShell({
       </header>
 
       <div className="sidenav-menu">
-        <LogoBox />
+        <KotakLogo />
         <button
           onClick={toggleSidebarHover}
           className="button-sm-hover"

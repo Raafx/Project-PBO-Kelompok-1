@@ -1,3 +1,5 @@
+"""Status kasir yang sedang bekerja untuk menu Transaksi Live admin."""
+
 from __future__ import annotations
 
 import asyncio
@@ -23,6 +25,7 @@ def heartbeat(
     session: DbSession,
     actor: Actor,
 ) -> LiveTransactionRead:
+    # POS mengirim status berkala; kasir hanya boleh memperbarui status dirinya.
     require_permission("pos.access")(actor)
     if payload.cashier_code.strip().upper() != actor.employee_code:
         raise HTTPException(
@@ -46,6 +49,8 @@ def list_live_transactions(session: DbSession) -> LiveWorkflowSnapshot:
     dependencies=[Depends(require_permission("admin.live_transactions"))],
 )
 def stream_live_transactions(session: DbSession) -> StreamingResponse:
+    # Koneksi ini tetap terbuka. Kirim snapshot saat berubah atau untuk menjaga
+    # koneksi tetap hidup; sesi database dibuat baru pada setiap pembacaan.
     factory = sessionmaker(bind=session.get_bind(), autoflush=False, expire_on_commit=False)
 
     async def events():

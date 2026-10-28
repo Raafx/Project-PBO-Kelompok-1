@@ -30,7 +30,7 @@ vi.mock("../api", () => ({
 const profile = {
   employee_code: "ADMIN",
   full_name: "Administrator",
-  role_name: "Pemilik",
+  role_name: "Administrator",
   permissions: ["admin.overview"],
 };
 
@@ -106,5 +106,27 @@ describe("login admin dengan Authenticator", () => {
     await user.click(screen.getByRole("button", { name: /lanjutkan/i }));
 
     await waitFor(() => expect(mocks.replace).toHaveBeenCalledWith("/pos"));
+  });
+
+  it("mengarahkan role gudang ke halaman admin terbatas", async () => {
+    const user = userEvent.setup();
+    mocks.loginAccount.mockResolvedValue({
+      status: "authenticated",
+      access_token: "warehouse-token",
+      challenge_token: null,
+      provisioning_uri: null,
+      totp_secret: null,
+      expires_at: "2026-10-09T02:00:00Z",
+      employee_code: "GUDANG",
+      full_name: "Staf Gudang MYMARKET",
+      role_name: "Staf Gudang",
+      permissions: ["admin.overview", "admin.stock", "admin.purchasing"],
+    });
+
+    render(<LoginPage />);
+    await user.type(screen.getByLabelText(/^password$/i), "password");
+    await user.click(screen.getByRole("button", { name: /lanjutkan/i }));
+
+    await waitFor(() => expect(mocks.replace).toHaveBeenCalledWith("/admin"));
   });
 });

@@ -2,15 +2,15 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import SearchableSelect from "./SearchableSelect";
+import PilihanCari from "./PilihanCari";
 
-describe("SearchableSelect", () => {
+describe("PilihanCari", () => {
   it("mencari opsi dan meneruskan value seperti select biasa", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
 
     render(
-      <SearchableSelect
+      <PilihanCari
         aria-label="Produk"
         value=""
         onChange={onChange}
@@ -18,7 +18,7 @@ describe("SearchableSelect", () => {
         <option value="">Pilih produk</option>
         <option value="apel">Jus Apel Premium</option>
         <option value="jeruk">Jeruk Mandarin Segar</option>
-      </SearchableSelect>,
+      </PilihanCari>,
     );
 
     const combobox = screen.getByRole("combobox", { name: "Produk" });

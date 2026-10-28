@@ -4,6 +4,8 @@ Backend FastAPI untuk frontend kasir MYMARKET. Data disimpan di MySQL/MariaDB
 database `kasir-pbo`; nominal uang selalu berupa integer rupiah agar tidak terkena
 masalah pembulatan floating-point.
 
+Peta endpoint, perhitungan, dan model tersedia di [PANDUAN_KODE.md](../PANDUAN_KODE.md).
+
 ## Setup lokal
 
 Pastikan service MySQL aktif dan file `.env` berisi `DATABASE_URL` yang benar, lalu:
@@ -17,14 +19,17 @@ cd back
 API tersedia di `http://127.0.0.1:8000`, dokumentasi interaktif di
 `http://127.0.0.1:8000/docs`, dan health check di `/health`.
 
-Akun administrator hasil seed adalah `admin@gmail.com` dengan password awal
-`password`. Akun ini mewajibkan enrollment TOTP pada login pertama melalui QR,
-kemudian meminta kode Authenticator pada setiap login berikutnya.
+Akun hasil seed memakai password awal `password`: `kasir@gmail.com` untuk Kasir,
+`admin@gmail.com` untuk akses penuh, dan `gudang@gmail.com` untuk Staf Gudang.
+Kasir masuk langsung tanpa TOTP. Admin dan Staf Gudang menghubungkan Authenticator
+melalui QR pada login pertama.
 
-## CEO Copilot dengan Gemini
+## CEO Copilot
 
-Isi API key Gemini di `back/.env`. Key hanya dibaca FastAPI dan tidak pernah masuk
-ke bundle atau browser frontend.
+Pertanyaan angka dijawab dari database tanpa API key: omzet per periode, perbandingan,
+tanggal omzet tertinggi, performa/laba produk, stok, dan isi transaksi. Hasilnya memakai
+service agregasi yang sama dengan laporan admin. Untuk analisis kualitatif, isi API key
+Gemini di `back/.env`. Key hanya dibaca FastAPI dan tidak masuk bundle frontend.
 
 ```env
 GEMINI_API_KEY=isi_api_key_kamu
@@ -36,14 +41,12 @@ GOOGLE_CLOUD_PROJECT_NAME=projek-pbo
 GOOGLE_CLOUD_PROJECT_NUMBER=69198748984
 ```
 
-Setelah mengubah `.env`, restart backend. CEO Copilot mengambil snapshot read-only
-langsung dari database: omzet beberapa periode, tren 30 hari, performa dan laba per
-produk, rincian barang per transaksi, kategori teratas, metode pembayaran, stok kritis,
-supplier, serta pembelian. Ringkasan angka memakai service agregasi yang sama dengan
-laporan admin; Gemini hanya menjelaskan angka tersebut dan tidak menghitung ulang.
-Jawaban Gemini dikirim secara streaming dan riwayatnya disimpan di database per akun admin. Endpoint
-chat membutuhkan permission `admin.ceo_chat`, yang secara default hanya dimiliki
-role Pemilik.
+Setelah mengubah `.env`, restart backend. Gemini hanya menerima ringkasan terbatas dari
+data read-only. Jawaban model ditampilkan setelah selesai dan lolos pemeriksaan format
+serta teks internal. Respons database dikirim segera. Riwayat tersimpan per akun admin;
+daftar percakapan hanya memuat judul dan waktu, sedangkan detail pesan diambil saat
+percakapan dipilih. Endpoint chat memerlukan permission `admin.ceo_chat`, yang secara
+default hanya dimiliki role Pemilik.
 
 ## Data demo historis
 
@@ -58,22 +61,23 @@ Seeder ini menambahkan katalog, kasir, member, transaksi, pembayaran, purchase
 order, dan pergerakan stok historis. Prosesnya idempotent sehingga aman dijalankan
 ulang tanpa menggandakan data demo.
 
-Katalog eKomart bisa disinkronkan tersendiri dengan:
+Katalog 48 produk supermarket Indonesia bisa disinkronkan tersendiri dengan:
 
 ```powershell
-.venv\Scripts\python.exe -m app.ekomart_catalog
+.venv\Scripts\python.exe -m app.download_catalog_images
+.venv\Scripts\python.exe -m app.indonesia_catalog
 ```
 
-Perintah ini mengaktifkan seluruh 28 produk eKomart dan mengarsipkan katalog lama
-tanpa menghapus referensi produk pada transaksi historis. Untuk mengganti master
-produk beserta seluruh data transaksi dan laporan demo secara end-to-end, gunakan:
+Perintah ini menyiapkan foto lokal, mengaktifkan produk Indonesia, dan mengarsipkan
+katalog lama tanpa menghapus referensi produk pada transaksi historis. Untuk mengganti
+master produk beserta seluruh data transaksi dan laporan demo secara end-to-end, gunakan:
 
 ```powershell
 .venv\Scripts\python.exe -m app.demo_seed --reset
 ```
 
 Perintah reset membuat backup JSON lengkap di `back/backups/`, membersihkan data
-operasional lama, lalu membangun satu tahun histori baru memakai produk eKomart.
+operasional lama, lalu membangun satu tahun histori baru memakai produk Indonesia.
 
 ## Perintah pemeriksaan
 
@@ -127,9 +131,10 @@ operasional lama, lalu membangun satu tahun histori baru memakai produk eKomart.
 | `GET` | `/api/v1/admin/live-transactions/stream` | Stream NDJSON transaksi realtime |
 | `GET` | `/api/v1/admin/reports/sales` | Laporan harian/bulanan, performa produk, dan detail transaksi |
 | `GET` | `/api/v1/admin/sales` | Cari transaksi termasuk berdasarkan nama/barcode produk |
-| `GET` | `/api/v1/admin/ceo-chat/status` | Status koneksi Gemini |
-| `GET/POST` | `/api/v1/admin/ceo-chat/conversations` | Riwayat/buat chat CEO |
-| `POST` | `/api/v1/admin/ceo-chat/conversations/{id}/messages` | Jawaban Gemini streaming |
+| `GET` | `/api/v1/admin/ceo-chat/status` | Mode database/Gemini |
+| `GET/POST` | `/api/v1/admin/ceo-chat/conversations` | Ringkasan riwayat/buat chat CEO |
+| `GET/DELETE` | `/api/v1/admin/ceo-chat/conversations/{id}` | Detail/hapus percakapan |
+| `POST` | `/api/v1/admin/ceo-chat/conversations/{id}/messages` | Jawaban berbasis database atau Gemini melalui NDJSON |
 
 Endpoint admin menerima bearer token dari login dan menolak akses yang tidak dimiliki role.
 `X-Actor-Code` masih didukung khusus alur development/test lokal.

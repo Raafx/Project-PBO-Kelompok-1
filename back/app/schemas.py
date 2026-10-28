@@ -492,6 +492,8 @@ class ReportDailySale(BaseModel):
     total_sales: int
     transaction_count: int
     gross_profit: int
+    expenses: int
+    net_profit: int
 
 
 class ReportMonthlySale(BaseModel):
@@ -499,6 +501,8 @@ class ReportMonthlySale(BaseModel):
     total_sales: int
     transaction_count: int
     gross_profit: int
+    expenses: int
+    net_profit: int
 
 
 class ReportBreakdown(BaseModel):
@@ -534,6 +538,29 @@ class ReportProductPerformance(BaseModel):
     average_unit_price: int
 
 
+class ReportProductOption(BaseModel):
+    id: str
+    barcode: str
+    name: str
+    category: str
+
+
+class ReportProductDaily(BaseModel):
+    date: date
+    transaction_count: int
+    quantity: int
+    net_revenue: int
+    cost_of_goods: int
+    gross_profit: int
+
+
+class ReportProductAnalysisRead(BaseModel):
+    date_from: date
+    date_to: date
+    product: ReportProductPerformance
+    daily_sales: list[ReportProductDaily]
+
+
 class AdminSalesReportRead(BaseModel):
     date_from: date
     date_to: date
@@ -543,6 +570,9 @@ class AdminSalesReportRead(BaseModel):
     average_transaction: int
     total_discount: int
     estimated_gross_profit: int
+    cost_of_goods: int
+    expenses: int
+    net_profit: int
     daily_sales: list[ReportDailySale]
     monthly_sales: list[ReportMonthlySale]
     payment_methods: list[ReportBreakdown]
@@ -577,6 +607,14 @@ class CeoChatConversationRead(BaseModel):
     title: str
     updated_at: datetime
     messages: list[CeoChatMessageRead]
+
+
+class CeoChatConversationSummaryRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    title: str
+    updated_at: datetime
 
 
 class CeoChatCreate(BaseModel):

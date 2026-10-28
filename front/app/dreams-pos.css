@@ -838,6 +838,19 @@ body {
   border-radius: 6px;
 }
 
+.method-confirm-card,
+.method-confirm-field,
+.edc-type-switch,
+.confirm-payment-button {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.method-confirm-card {
+  width: 100%;
+  overflow: hidden;
+}
+
 .cash-presets {
   grid-template-columns: repeat(3, 1fr);
 }
@@ -1106,7 +1119,7 @@ body {
   .qris-payment-detail {
     padding: 5px;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 125px;
+    grid-template-columns: minmax(0, 1fr) minmax(110px, 0.45fr);
     align-items: end;
     gap: 5px;
   }
@@ -1114,15 +1127,25 @@ body {
   .edc-payment-detail {
     padding: 5px;
     display: grid;
-    grid-template-columns: 105px minmax(105px, 1.35fr) minmax(90px, 1fr) 115px;
+    grid-template-columns:
+      minmax(84px, 0.9fr)
+      minmax(0, 1.25fr)
+      minmax(0, 1fr)
+      minmax(105px, 1fr);
     align-items: end;
     gap: 5px;
+  }
+
+  .qris-payment-detail .confirm-payment-button,
+  .edc-payment-detail .confirm-payment-button {
+    grid-column: auto;
+    width: 100%;
   }
 
   .qris-payment-detail .method-confirm-field input,
   .edc-payment-detail .method-confirm-field input {
     height: 34px;
-    margin-top: 2px;
+    margin-top: 0;
   }
 
   .qris-payment-detail .confirm-payment-button,

@@ -4,8 +4,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
-from app.ekomart_catalog import sync_ekomart_catalog
+from app.indonesia_catalog import sync_indonesian_catalog
 from app.models import (
+    AccessRole,
     BusinessSetting,
     Cashier,
     Member,
@@ -21,6 +22,45 @@ SUPPLIERS = [
     ("SUP-002", "CV Sumber Minuman", "Dimas Putra", "0812-4400-1002", "sales@sumberminuman.id"),
     ("SUP-003", "PT Mitra Retail Sejahtera", "Nadia Rahman", "0812-4400-1003", "po@mitraretail.id"),
 ]
+
+
+def _upsert_access_account(
+    session: Session,
+    *,
+    employee_code: str,
+    full_name: str,
+    email: str,
+    role_code: str,
+    roles: dict[str, AccessRole],
+    totp_required: bool,
+) -> Cashier:
+    """Create or normalize a stable login account without duplicating existing staff."""
+
+    account = session.scalar(select(Cashier).where(Cashier.email == email))
+    if account is None:
+        account = session.scalar(
+            select(Cashier).where(Cashier.employee_code == employee_code)
+        )
+    if account is None:
+        account = Cashier(employee_code=employee_code, full_name=full_name)
+        session.add(account)
+
+    role = roles[role_code]
+    account.employee_code = employee_code
+    account.full_name = full_name
+    account.email = email
+    account.password_hash = hash_secret("password")
+    account.pin_hash = account.pin_hash or hash_secret("123456")
+    account.role = role_code.casefold()
+    account.role_id = role.id
+    account.totp_required = totp_required
+    account.is_active = True
+    if not totp_required:
+        account.totp_secret = None
+        account.totp_enabled = False
+        account.totp_enrolled_at = None
+        account.totp_last_counter = None
+    return account
 
 
 def seed_database(session: Session) -> None:
@@ -60,32 +100,33 @@ def seed_database(session: Session) -> None:
         cashier.password_hash = cashier.password_hash or hash_secret("admin12345")
         cashier.pin_hash = cashier.pin_hash or hash_secret("123456")
 
-    admin = session.scalar(select(Cashier).where(Cashier.employee_code == "ADMIN"))
-    if admin is None:
-        admin = session.scalar(select(Cashier).where(Cashier.email == "admin@gmail.com"))
-    if admin is None:
-        session.add(
-            Cashier(
-                employee_code="ADMIN",
-                full_name="Administrator",
-                email="admin@gmail.com",
-                password_hash=hash_secret("password"),
-                pin_hash=hash_secret("123456"),
-                role="owner",
-                role_id=roles["OWNER"].id,
-                totp_required=True,
-                is_active=True,
-            )
-        )
-    else:
-        admin.full_name = admin.full_name or "Administrator"
-        admin.email = "admin@gmail.com"
-        admin.password_hash = admin.password_hash or hash_secret("password")
-        admin.pin_hash = admin.pin_hash or hash_secret("123456")
-        admin.role = "owner"
-        admin.role_id = roles["OWNER"].id
-        admin.totp_required = True
-        admin.is_active = True
+    _upsert_access_account(
+        session,
+        employee_code="KASIR",
+        full_name="Kasir MYMARKET",
+        email="kasir@gmail.com",
+        role_code="CASHIER",
+        roles=roles,
+        totp_required=False,
+    )
+    _upsert_access_account(
+        session,
+        employee_code="ADMIN",
+        full_name="Administrator",
+        email="admin@gmail.com",
+        role_code="OWNER",
+        roles=roles,
+        totp_required=True,
+    )
+    _upsert_access_account(
+        session,
+        employee_code="GUDANG",
+        full_name="Staf Gudang MYMARKET",
+        email="gudang@gmail.com",
+        role_code="WAREHOUSE",
+        roles=roles,
+        totp_required=True,
+    )
 
     member = session.scalar(select(Member).where(Member.phone == "081255449011"))
     if member is None:
@@ -118,7 +159,7 @@ def seed_database(session: Session) -> None:
                 )
             )
 
-    sync_ekomart_catalog(session)
+    sync_indonesian_catalog(session)
 
     default_settings = {
         "payment.methods": ("payment", "Metode pembayaran", "cash,qris,edc"),

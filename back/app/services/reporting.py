@@ -57,7 +57,15 @@ def product_performance(
     session: Session,
     start_at: datetime,
     end_at: datetime,
+    product_id: str | None = None,
 ) -> list[dict[str, int | float | str | None]]:
+    filters = [
+        Sale.status == "completed",
+        Sale.created_at >= start_at,
+        Sale.created_at < end_at,
+    ]
+    if product_id:
+        filters.append(Product.id == product_id)
     gross_revenue = func.sum(SaleItem.unit_price * SaleItem.quantity)
     discount = func.sum(SaleItem.discount)
     net_revenue = func.sum(SaleItem.subtotal)
@@ -67,9 +75,9 @@ def product_performance(
     )
     rows = session.execute(
         select(
-            SaleItem.product_id,
-            SaleItem.barcode,
-            SaleItem.product_name,
+            Product.id.label("product_id"),
+            Product.barcode,
+            Product.name,
             Product.category,
             Product.image_url,
             func.count(distinct(SaleItem.sale_id)).label("transaction_count"),
@@ -82,19 +90,15 @@ def product_performance(
         )
         .join(Sale, Sale.id == SaleItem.sale_id)
         .join(Product, Product.id == SaleItem.product_id)
-        .where(
-            Sale.status == "completed",
-            Sale.created_at >= start_at,
-            Sale.created_at < end_at,
-        )
+        .where(*filters)
         .group_by(
-            SaleItem.product_id,
-            SaleItem.barcode,
-            SaleItem.product_name,
+            Product.id,
+            Product.barcode,
+            Product.name,
             Product.category,
             Product.image_url,
         )
-        .order_by(gross_profit.desc(), net_revenue.desc(), SaleItem.product_name)
+        .order_by(gross_profit.desc(), net_revenue.desc(), Product.name)
     ).all()
 
     result: list[dict[str, int | float | str | None]] = []
@@ -106,7 +110,7 @@ def product_performance(
             {
                 "product_id": row.product_id,
                 "barcode": row.barcode,
-                "name": row.product_name,
+                "name": row.name,
                 "category": row.category,
                 "image_url": row.image_url,
                 "transaction_count": _integer(row.transaction_count),

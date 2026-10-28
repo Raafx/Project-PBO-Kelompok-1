@@ -1,5 +1,7 @@
 "use client";
 
+// Pengganti <select> biasa: pilihan dapat dicari dengan mengetik.
+// Props tetap mengikuti select HTML agar formulir lama dapat memakainya.
 import {
   Children,
   Fragment,
@@ -12,32 +14,32 @@ import {
 } from "react";
 import ReactSelect, { type SingleValue } from "react-select";
 
-type SearchableOption = {
+type OpsiPilihan = {
   value: string;
   label: string;
   isDisabled: boolean;
 };
 
-type SearchableSelectProps = Omit<
+type PropertiPilihanCari = Omit<
   SelectHTMLAttributes<HTMLSelectElement>,
   "multiple" | "size"
 > & {
   children: ReactNode;
 };
 
-function textContent(node: ReactNode): string {
+function teksPilihan(node: ReactNode): string {
   if (typeof node === "string" || typeof node === "number") {
     return String(node);
   }
-  if (Array.isArray(node)) return node.map(textContent).join("");
+  if (Array.isArray(node)) return node.map(teksPilihan).join("");
   if (isValidElement<{ children?: ReactNode }>(node)) {
-    return textContent(node.props.children);
+    return teksPilihan(node.props.children);
   }
   return "";
 }
 
-function optionsFromChildren(children: ReactNode): SearchableOption[] {
-  const options: SearchableOption[] = [];
+function optionsFromChildren(children: ReactNode): OpsiPilihan[] {
+  const options: OpsiPilihan[] = [];
 
   Children.forEach(children, (child) => {
     if (!isValidElement(child)) return;
@@ -64,7 +66,7 @@ function optionsFromChildren(children: ReactNode): SearchableOption[] {
       disabled?: boolean;
       children?: ReactNode;
     };
-    const label = textContent(props.children).trim();
+    const label = teksPilihan(props.children).trim();
     options.push({
       value: props.value === undefined ? label : String(props.value),
       label,
@@ -75,7 +77,7 @@ function optionsFromChildren(children: ReactNode): SearchableOption[] {
   return options;
 }
 
-export default function SearchableSelect({
+export default function PilihanCari({
   children,
   className = "",
   disabled,
@@ -85,7 +87,7 @@ export default function SearchableSelect({
   required,
   value,
   "aria-label": ariaLabel,
-}: SearchableSelectProps) {
+}: PropertiPilihanCari) {
   const generatedId = useId();
   const portalTarget = typeof document === "undefined" ? undefined : document.body;
   const options = useMemo(() => optionsFromChildren(children), [children]);
@@ -93,7 +95,7 @@ export default function SearchableSelect({
   const selected =
     options.find((option) => option.value === selectedValue) || null;
 
-  function emitChange(option: SingleValue<SearchableOption>) {
+  function emitChange(option: SingleValue<OpsiPilihan>) {
     if (!onChange) return;
     const target = {
       name: name || "",
@@ -103,7 +105,7 @@ export default function SearchableSelect({
   }
 
   return (
-    <ReactSelect<SearchableOption, false>
+    <ReactSelect<OpsiPilihan, false>
       instanceId={id || generatedId}
       inputId={id || generatedId}
       name={name}

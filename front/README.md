@@ -4,6 +4,8 @@ Frontend kasir berbasis Next.js App Router dan TypeScript. Katalog, member, vouc
 dan checkout terhubung ke FastAPI di folder `../back`. Tanpa `NEXT_PUBLIC_API_URL`,
 UI tetap memakai data lokal agar mode demo dan pengujian dapat berjalan mandiri.
 
+Peta file dan urutan belajar tersedia di [PANDUAN_KODE.md](../PANDUAN_KODE.md).
+
 ## Menjalankan
 
 ```powershell
@@ -15,22 +17,23 @@ npm run dev
 Buka `http://localhost:3000`. Halaman root mengarah ke login, kemudian akun
 diarahkan otomatis ke `/pos` atau `/admin` sesuai permission role-nya.
 
-Login tersedia di `http://localhost:3000/login`. Akun seed lokal memakai kode
-`KASIR03`, password `admin12345`, dan PIN supervisor `123456`.
-Akun demo role Kasir memakai kode `KASIR01`, `KASIR02`, atau `KASIR04` dengan
-password awal `kasir12345`; setelah login akun tersebut diarahkan ke `/pos`.
+Login tersedia di `http://localhost:3000/login`. Gunakan password `password` untuk
+akun role berikut:
 
-Akun admin utama memakai email `admin@gmail.com` dan password awal `password`.
-Login pertamanya menampilkan QR yang wajib dipindai dengan Google Authenticator atau
-Microsoft Authenticator. Token admin baru diterbitkan setelah kode 6 digit berhasil
-dikonfirmasi; login berikutnya selalu meminta kode Authenticator.
+- `kasir@gmail.com` diarahkan langsung ke `/pos` tanpa TOTP.
+- `admin@gmail.com` memiliki akses penuh ke `/admin` dan memakai Authenticator.
+- `gudang@gmail.com` diarahkan ke `/admin` dengan menu gudang saja dan memakai
+  Authenticator.
+
+PIN supervisor demo adalah `123456`.
 
 Halaman kasir tersedia di `http://localhost:3000/pos`, sedangkan halaman admin
 tersedia di `http://localhost:3000/admin`. Masing-masing dilindungi oleh permission
 role dan sesi yang divalidasi ke backend.
 
 Menu **Master Produk** memakai card, table, modal, badge, dan button dari template
-Adminto, sedangkan katalog serta aset gambarnya berasal dari paket eKomart. Produk
+Adminto, sedangkan katalog berisi produk supermarket Indonesia dengan foto lokal
+bersumber dari Open Food Facts. Produk
 dapat dicari, difilter, ditambah, diedit, diekspor, atau dinonaktifkan tanpa menghapus
 histori transaksi.
 

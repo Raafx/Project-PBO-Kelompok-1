@@ -3,6 +3,9 @@
 Workspace aplikasi kasir MYMARKET dengan frontend Next.js dan backend FastAPI.
 Data operasional disimpan di database MySQL/MariaDB `kasir-pbo`.
 
+**Baru belajar kodenya?** Mulai dari [PANDUAN_KODE.md](PANDUAN_KODE.md)
+untuk mencari file halaman, API, rumus laporan, dan model database.
+
 ## Struktur
 
 - `front/` — UI kasir dan admin Next.js, TypeScript, serta pengujian interaksi.
@@ -41,30 +44,26 @@ frontend ke `http://127.0.0.1:8000/api/v1`.
 - Login akun: `http://localhost:3000/login`
 - CEO Copilot: `http://localhost:3000/ceo-chat`
 
-Untuk data lokal hasil seed, akun awalnya adalah `KASIR03` dengan password
-`admin12345` dan PIN supervisor `123456`. Ganti password dan PIN dari menu
-**Pusat Operasional > Pengaturan** sebelum aplikasi dipakai di luar lingkungan lokal.
+Akun role hasil seed memakai password `password`:
 
-Akun administrator memakai `admin@gmail.com` dengan password awal `password`.
-Pada login pertama, pindai QR menggunakan aplikasi Authenticator dan konfirmasikan
-kode 6 digit. Setelah terhubung, setiap login admin mewajibkan password dan TOTP.
-Akun demo kasir dapat masuk memakai `KASIR01`, `KASIR02`, atau `KASIR04` dengan
-password awal `kasir12345`, lalu otomatis diarahkan ke `/pos`.
+- `kasir@gmail.com` — role Kasir, langsung diarahkan ke `/pos` tanpa TOTP.
+- `admin@gmail.com` — akses admin penuh; login pertama menghubungkan Authenticator.
+- `gudang@gmail.com` — role Staf Gudang dengan menu stok, pembelian, dan supplier;
+  login pertama menghubungkan Authenticator lalu diarahkan ke `/admin`.
+
+PIN supervisor demo tetap `123456`. Ganti password dan PIN sebelum aplikasi dipakai
+di luar lingkungan lokal.
 
 ## CEO Copilot
 
-Chatbot CEO memakai Gemini melalui FastAPI. Masukkan API key milik project
-`projek-pbo` ke `GEMINI_API_KEY` di `back/.env`, lalu restart backend. Frontend tidak
-memerlukan dan tidak boleh menyimpan API key.
-
-Setiap pertanyaan diberi konteks aktual dari database MYMARKET dalam bentuk snapshot
-read-only: performa hari ini, bulan berjalan, bulan sebelumnya, tren 30 hari, performa
-dan laba per produk, rincian barang per transaksi, kategori, metode pembayaran, stok
-kritis, dan pembelian. Nilai omzet dan laba memakai agregasi database yang sama dengan
-halaman laporan sehingga angka tidak dihitung ulang oleh model. Respons muncul secara
-streaming supaya terasa cepat, sedangkan percakapan disimpan di database dan dapat
-dibuka lagi dari riwayat chat. Akses awalnya hanya diberikan ke role Pemilik melalui
-permission `admin.ceo_chat`.
+Chatbot CEO menjawab pertanyaan angka langsung dari database MYMARKET: omzet menurut
+tanggal/periode, perbandingan, performa dan laba produk, rincian transaksi, serta stok.
+Hitungannya memakai agregasi yang sama dengan laporan admin dan tetap berfungsi tanpa
+API key. Untuk pertanyaan analisis kualitatif, isi `GEMINI_API_KEY` di `back/.env` lalu
+restart backend. Gemini menerima ringkasan data yang dibatasi; API key hanya berada di
+backend. Jawaban model diperiksa sebelum ditampilkan agar teks internal atau jawaban
+terpotong tidak muncul. Riwayat chat disimpan per akun dan detailnya dimuat saat dipilih.
+Akses diberikan melalui permission `admin.ceo_chat`, secara default hanya untuk Pemilik.
 
 ## Modul admin
 
@@ -159,10 +158,12 @@ Konfigurasi rahasia berada di `back/.env` dan tidak masuk Git. Template tersedia
 `back/.env.example`. Ganti password user database sebelum dipakai di jaringan atau
 production.
 
-Katalog aktif berisi seluruh 28 produk grocery eKomart lengkap dengan barcode, SKU,
-kategori, merek, satuan, lokasi, harga, stok, dan gambar dari paket template eKomart.
+Katalog aktif berisi 48 produk yang umum dijual di supermarket Indonesia lengkap
+dengan barcode, SKU, kategori, merek, satuan, lokasi, harga demo, stok, dan foto produk.
+Identitas serta foto produk berasal dari Open Food Facts dan fotonya disimpan lokal
+di frontend agar tampilan kasir tidak bergantung pada hotlink eksternal.
 Sinkronisasi katalog tanpa mengubah histori dapat dijalankan dengan
-`python -m app.ekomart_catalog` dari folder `back`. Untuk mengganti katalog sekaligus
+`python -m app.indonesia_catalog` dari folder `back`. Untuk mengganti katalog sekaligus
 membangun ulang transaksi, pembelian, stok, dan data laporan demo, jalankan
 `python -m app.demo_seed --reset`; snapshot JSON database dibuat otomatis sebelum reset.
 

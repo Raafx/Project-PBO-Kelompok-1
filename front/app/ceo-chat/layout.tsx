@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 
 import "../admin/adminto.scss";
 import "./ceo-chat.scss";
-import RoleGuard from "../RoleGuard";
+import PemeriksaPeran from "../PemeriksaPeran";
 
 export const metadata: Metadata = {
   title: "Asisten Bisnis | MYMARKET",
@@ -10,5 +10,5 @@ export const metadata: Metadata = {
 };
 
 export default function CeoChatLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <RoleGuard area="ceo-chat">{children}</RoleGuard>;
+  return <PemeriksaPeran area="ceo-chat">{children}</PemeriksaPeran>;
 }

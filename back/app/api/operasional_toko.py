@@ -1,9 +1,16 @@
+"""Endpoint login, shift kasir, dan modul operasional toko.
+
+File ini masih memuat beberapa fitur lama; Analisis Produk sudah berada di
+`api/analisis_produk.py` agar alurnya lebih mudah dipelajari.
+"""
+
 from __future__ import annotations
 
 import io
 import json
 from datetime import UTC, date, datetime, timedelta
 from typing import Annotated
+from zoneinfo import ZoneInfo
 
 from barcode import Code128
 from barcode.writer import SVGWriter
@@ -14,6 +21,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.admin import Actor, require_any_permission, require_permission
+from app.config import get_settings
 from app.database import get_db
 from app.models import (
     AccessRole,
@@ -118,6 +126,7 @@ def _ensure_own_cashier(actor: Cashier, cashier_code: str) -> None:
         )
 
 
+# Login dan Authenticator. Aturan password/TOTP ada di services/operations.py.
 @router.post("/auth/login", response_model=LoginRead)
 def login(payload: LoginCreate, session: DbSession) -> LoginRead:
     return authenticate(session, payload.identity, payload.password)
@@ -250,6 +259,7 @@ def logout(
         session.commit()
 
 
+# Shift kasir: buka shift, catat kas masuk/keluar, lalu tutup shift.
 @router.get("/shifts/current", response_model=ShiftRead | None)
 def get_current_shift(
     session: DbSession,
@@ -326,6 +336,7 @@ def cancel_sale(
     return {"id": item.id, "return_no": item.return_no, "amount": item.amount}
 
 
+# Snapshot untuk tab operasional di halaman admin.
 @router.get("/admin/operations")
 def operations_snapshot(
     session: DbSession,
@@ -704,12 +715,16 @@ def add_staff(
     }
 
 
+# Laporan operasional: mengambil data dalam rentang tanggal yang diminta.
 @router.get("/admin/reports/operations")
 def operations_report(
     session: DbSession,
     _actor: Annotated[Cashier, Depends(require_permission("admin.reports"))],
 ) -> dict[str, object]:
-    start = datetime.combine(datetime.now(UTC).date().replace(day=1), datetime.min.time())
+    start = datetime.combine(
+        datetime.now(ZoneInfo(get_settings().business_timezone)).date().replace(day=1),
+        datetime.min.time(),
+    )
     revenue = int(
         session.scalar(
             select(func.coalesce(func.sum(Sale.total), 0)).where(
@@ -718,11 +733,15 @@ def operations_report(
         )
         or 0
     )
-    cost = int(
+    gross_profit = int(
         session.scalar(
-            select(func.coalesce(func.sum(SaleItem.quantity * Product.cost_price), 0))
+            select(
+                func.coalesce(
+                    func.sum(SaleItem.subtotal - SaleItem.quantity * SaleItem.unit_cost),
+                    0,
+                )
+            )
             .join(Sale, Sale.id == SaleItem.sale_id)
-            .join(Product, Product.id == SaleItem.product_id)
             .where(Sale.status == "completed", Sale.created_at >= start)
         )
         or 0
@@ -798,9 +817,9 @@ def operations_report(
     return {
         "period": start.date().isoformat(),
         "revenue": revenue,
-        "gross_profit": revenue - cost,
+        "gross_profit": gross_profit,
         "expenses": expenses,
-        "net_profit": revenue - cost - expenses,
+        "net_profit": gross_profit - expenses,
         "inventory_value": inventory_value,
         "tax_estimate": tax_estimate,
         "purchase_spend": purchase_spend,
@@ -831,6 +850,7 @@ def operations_report(
     }
 
 
+# Ekspor dan impor master produk memakai berkas Excel.
 @router.get("/admin/products/export.xlsx")
 def export_products(
     session: DbSession,

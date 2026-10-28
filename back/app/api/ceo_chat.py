@@ -4,6 +4,7 @@ import json
 import logging
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
+from time import perf_counter
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
@@ -17,12 +18,18 @@ from app.database import get_db
 from app.models import CeoChatMessage, CeoChatSession
 from app.schemas import (
     CeoChatConversationRead,
+    CeoChatConversationSummaryRead,
     CeoChatCreate,
     CeoChatMessageRead,
     CeoChatPrompt,
     CeoChatStatusRead,
 )
-from app.services.ceo_assistant import build_executive_snapshot, stream_gemini_answer
+from app.services.ceo_assistant import (
+    build_executive_snapshot,
+    compact_model_snapshot,
+    stream_gemini_answer,
+)
+from app.services.ceo_queries import answer_business_question
 
 logger = logging.getLogger(__name__)
 router = APIRouter(
@@ -49,24 +56,28 @@ def _conversation(session: Session, conversation_id: str, actor_id: str) -> CeoC
 def chat_status() -> CeoChatStatusRead:
     settings = get_settings()
     return CeoChatStatusRead(
-        configured=bool(settings.gemini_api_key.strip()),
-        model=settings.gemini_model,
+        configured=True,
+        model=settings.gemini_model if settings.gemini_api_key.strip() else "database",
         project_name=settings.google_cloud_project_name,
         project_number=settings.google_cloud_project_number,
         context_source="Database operasional MYMARKET",
     )
 
 
-@router.get("/conversations", response_model=list[CeoChatConversationRead])
-def list_conversations(session: DbSession, actor: Actor) -> list[CeoChatSession]:
-    return list(
-        session.scalars(
-            select(CeoChatSession)
-            .where(CeoChatSession.created_by_id == actor.id)
-            .order_by(CeoChatSession.updated_at.desc())
-            .limit(100)
-        ).all()
-    )
+@router.get("/conversations", response_model=list[CeoChatConversationSummaryRead])
+def list_conversations(session: DbSession, actor: Actor) -> list[dict[str, object]]:
+    rows = session.execute(
+        select(CeoChatSession.id, CeoChatSession.title, CeoChatSession.updated_at)
+        .where(CeoChatSession.created_by_id == actor.id)
+        .order_by(CeoChatSession.updated_at.desc())
+        .limit(100)
+    ).all()
+    return [dict(row._mapping) for row in rows]
+
+
+@router.get("/conversations/{conversation_id}", response_model=CeoChatConversationRead)
+def get_conversation(conversation_id: str, session: DbSession, actor: Actor) -> CeoChatSession:
+    return _conversation(session, conversation_id, actor.id)
 
 
 @router.post(
@@ -100,15 +111,21 @@ def send_message(
     session: DbSession,
     actor: Actor,
 ) -> StreamingResponse:
-    settings = get_settings()
-    if not settings.gemini_api_key.strip():
-        raise HTTPException(
-            status.HTTP_503_SERVICE_UNAVAILABLE,
-            "Asisten sedang tidak tersedia.",
-        )
-
+    started_at = perf_counter()
     conversation = _conversation(session, conversation_id, actor.id)
     history = list(conversation.messages)
+    direct_answer = answer_business_question(session, payload.message, history)
+    settings = get_settings()
+    if direct_answer is None and not settings.gemini_api_key.strip():
+        direct_answer = (
+            "Analisis strategis sementara tidak tersedia. Saya tetap bisa menjawab "
+            "pertanyaan angka tentang omzet, produk, stok, dan transaksi langsung "
+            "dari database MYMARKET."
+        )
+    answer_route = "database" if direct_answer is not None else "gemini"
+    model_snapshot = None
+    if direct_answer is None:
+        model_snapshot = compact_model_snapshot(build_executive_snapshot(session))
     user_message = CeoChatMessage(
         session_id=conversation.id,
         role="user",
@@ -120,7 +137,6 @@ def send_message(
     session.add(user_message)
     session.commit()
     session.refresh(user_message)
-    snapshot = build_executive_snapshot(session)
 
     async def events() -> AsyncIterator[str]:
         answer_parts: list[str] = []
@@ -138,9 +154,15 @@ def send_message(
             + "\n"
         )
         try:
-            async for part in stream_gemini_answer(payload.message, snapshot, history):
-                answer_parts.append(part)
-                yield json.dumps({"type": "delta", "text": part}, ensure_ascii=False) + "\n"
+            if direct_answer is not None:
+                answer_parts.append(direct_answer)
+                yield (
+                    json.dumps({"type": "delta", "text": direct_answer}, ensure_ascii=False) + "\n"
+                )
+            else:
+                async for part in stream_gemini_answer(payload.message, model_snapshot, history):
+                    answer_parts.append(part)
+                    yield json.dumps({"type": "delta", "text": part}, ensure_ascii=False) + "\n"
             answer = "".join(answer_parts).strip()
             if not answer:
                 raise RuntimeError("Gemini mengembalikan jawaban kosong")
@@ -153,6 +175,11 @@ def send_message(
             session.add(assistant_message)
             session.commit()
             session.refresh(assistant_message)
+            logger.info(
+                "CEO chat selesai route=%s duration_ms=%d",
+                answer_route,
+                round((perf_counter() - started_at) * 1000),
+            )
             yield (
                 json.dumps(
                     {
@@ -168,14 +195,14 @@ def send_message(
             )
         except Exception:
             session.rollback()
-            logger.exception("Gemini gagal merespons percakapan %s", conversation.id)
+            logger.exception(
+                "CEO chat gagal route=%s conversation=%s", answer_route, conversation.id
+            )
             yield (
                 json.dumps(
                     {
                         "type": "error",
-                        "message": (
-                            "Asisten belum dapat merespons. Silakan coba lagi."
-                        ),
+                        "message": ("Asisten belum dapat merespons. Silakan coba lagi."),
                     },
                     ensure_ascii=False,
                 )

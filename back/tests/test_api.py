@@ -8,8 +8,8 @@ def checkout_payload(**payment_overrides: object) -> dict:
         "cashier_code": "KASIR03",
         "member_phone": "081255449011",
         "items": [
-            {"barcode": "8997000400001", "quantity": 2},
-            {"barcode": "8997000400002", "quantity": 1},
+            {"barcode": "0089686010947", "quantity": 2},
+            {"barcode": "0089686170795", "quantity": 1},
         ],
         "payment": payment,
     }
@@ -22,14 +22,14 @@ def test_health_checks_database(client: TestClient) -> None:
 
 
 def test_product_lookup_by_barcode(client: TestClient) -> None:
-    response = client.get("/api/v1/products/barcode/8997000400010")
+    response = client.get("/api/v1/products/barcode/8888900415009")
     assert response.status_code == 200
-    assert response.json()["name"] == "Kembang Kol Segar 1kg"
-    assert response.json()["price"] == 29_900
+    assert response.json()["name"] == "La Fonte Spaghetti 225g"
+    assert response.json()["price"] == 13_900
 
 
 def test_checkout_uses_database_prices_and_exact_cash(client: TestClient) -> None:
-    stock_before = client.get("/api/v1/products/barcode/8997000400001").json()["stock"]
+    stock_before = client.get("/api/v1/products/barcode/0089686010947").json()["stock"]
     response = client.post(
         "/api/v1/sales/checkout",
         json=checkout_payload(),
@@ -37,17 +37,16 @@ def test_checkout_uses_database_prices_and_exact_cash(client: TestClient) -> Non
     )
     assert response.status_code == 201
     sale = response.json()
-    assert sale["subtotal"] == 194_700
-    assert sale["total"] == 194_700
+    assert sale["subtotal"] == 24_000
+    assert sale["total"] == 24_000
     assert sale["item_count"] == 3
     assert sale["items"][0]["unit_cost"] > 0
     assert sale["items"][0]["gross_profit"] == (
-        sale["items"][0]["subtotal"]
-        - sale["items"][0]["unit_cost"] * sale["items"][0]["quantity"]
+        sale["items"][0]["subtotal"] - sale["items"][0]["unit_cost"] * sale["items"][0]["quantity"]
     )
-    assert sale["payment"]["received_amount"] == 194_700
+    assert sale["payment"]["received_amount"] == 24_000
     assert sale["payment"]["change_amount"] == 0
-    stock_after = client.get("/api/v1/products/barcode/8997000400001").json()["stock"]
+    stock_after = client.get("/api/v1/products/barcode/0089686010947").json()["stock"]
     assert stock_after == stock_before - 2
 
     repeated = client.post(
@@ -57,7 +56,7 @@ def test_checkout_uses_database_prices_and_exact_cash(client: TestClient) -> Non
     )
     assert repeated.status_code == 201
     assert repeated.json()["id"] == sale["id"]
-    stock_after_retry = client.get("/api/v1/products/barcode/8997000400001").json()["stock"]
+    stock_after_retry = client.get("/api/v1/products/barcode/0089686010947").json()["stock"]
     assert stock_after_retry == stock_after
 
 
@@ -67,7 +66,7 @@ def test_checkout_rejects_quantity_above_available_stock(client: TestClient) -> 
         json={
             "store_code": "MY-001",
             "cashier_code": "KASIR03",
-            "items": [{"barcode": "8997000400010", "quantity": 999}],
+            "items": [{"barcode": "8888900415009", "quantity": 999}],
             "payment": {"method": "cash"},
         },
     )

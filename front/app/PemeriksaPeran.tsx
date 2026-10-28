@@ -1,5 +1,6 @@
 "use client";
 
+// Dipakai oleh layout admin, kasir, dan chat CEO untuk memastikan role boleh masuk.
 import { useEffect, useState } from "react";
 
 import { loadAccountProfile } from "./api";
@@ -10,7 +11,7 @@ import {
   type AccessArea,
 } from "./access";
 
-export default function RoleGuard({
+export default function PemeriksaPeran({
   area,
   children,
 }: Readonly<{
@@ -28,6 +29,7 @@ export default function RoleGuard({
       return;
     }
 
+    // Izin diverifikasi lagi ke backend, sehingga perubahan role langsung berlaku.
     void loadAccountProfile()
       .then((profile) => {
         if (cancelled) return;
