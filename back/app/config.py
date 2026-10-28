@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     )
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-3.5-flash-lite"
+    gemini_model: str = "gemini-3.8-flash"
     gemini_fallback_model: str = "gemini-3.6-flash"
     gemini_timeout_seconds: int = 12
     gemini_retry_attempts: int = 1

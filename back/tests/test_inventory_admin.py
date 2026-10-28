@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -271,6 +273,20 @@ def test_admin_sales_and_report_use_completed_pos_transactions(
             "gross_profit": 1_600,
         }
     ]
+    assert product_analysis.json()["monthly_comparison"] == [
+        {
+            "month": sale_row.created_at.date().replace(day=1).isoformat(),
+            "transaction_count": 1,
+            "quantity": 2,
+            "gross_revenue": 7_000,
+            "discount": 0,
+            "net_revenue": 7_000,
+            "cost_of_goods": 5_400,
+            "gross_profit": 1_600,
+            "margin_percentage": 22.86,
+            "average_unit_price": 3_500,
+        }
+    ]
     unsold_id = next(option["id"] for option in options.json() if option["id"] != product_id)
     unsold = client.get(
         f"/api/v1/admin/reports/products/{unsold_id}",
@@ -326,6 +342,56 @@ def test_admin_sales_and_report_use_completed_pos_transactions(
     assert operations["gross_profit"] == 1_600
     assert operations["expenses"] == 2_000
     assert operations["net_profit"] == -400
+
+
+def test_product_analysis_compares_several_months(
+    client: TestClient, session: Session
+) -> None:
+    sale_ids: list[str] = []
+    for number in (1, 2):
+        response = client.post(
+            "/api/v1/sales/checkout",
+            json={
+                "store_code": "MY-001",
+                "cashier_code": "KASIR03",
+                "items": [{"barcode": "0089686010947", "quantity": 1}],
+                "payment": {
+                    "method": "qris",
+                    "confirmed": True,
+                    "approval_code": f"QRIS-COMPARE-{number}",
+                },
+            },
+        )
+        assert response.status_code == 201
+        sale_ids.append(response.json()["id"])
+
+    august_sale = session.get(Sale, sale_ids[0])
+    september_sale = session.get(Sale, sale_ids[1])
+    assert august_sale is not None and september_sale is not None
+    august_sale.created_at = datetime(2026, 8, 15, 10, 0)
+    september_sale.created_at = datetime(2026, 9, 15, 10, 0)
+    session.commit()
+
+    product_id = august_sale.items[0].product_id
+    response = client.get(
+        f"/api/v1/admin/reports/products/{product_id}",
+        params={"date_from": "2026-08-01", "date_to": "2026-10-31"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["product"]["quantity"] == 2
+    assert payload["product"]["net_revenue"] == 7_000
+    assert [row["month"] for row in payload["monthly_comparison"]] == [
+        "2026-08-01",
+        "2026-09-01",
+        "2026-10-01",
+    ]
+    assert [row["quantity"] for row in payload["monthly_comparison"]] == [1, 1, 0]
+    assert [row["gross_profit"] for row in payload["monthly_comparison"]] == [
+        800,
+        800,
+        0,
+    ]
 
 
 def test_role_permissions_limit_admin_pages(client: TestClient, session: Session) -> None:

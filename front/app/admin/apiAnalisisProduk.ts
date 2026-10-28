@@ -20,6 +20,18 @@ export type HasilAnalisisProduk = {
     cost_of_goods: number;
     gross_profit: number;
   }>;
+  monthly_comparison: Array<{
+    month: string;
+    transaction_count: number;
+    quantity: number;
+    gross_revenue: number;
+    discount: number;
+    net_revenue: number;
+    cost_of_goods: number;
+    gross_profit: number;
+    margin_percentage: number;
+    average_unit_price: number;
+  }>;
 };
 
 export function ambilDaftarProduk() {

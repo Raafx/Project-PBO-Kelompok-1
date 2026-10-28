@@ -4,10 +4,11 @@ from datetime import date, datetime
 from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.models import Sale
+from app.models import Product, Sale
 from app.services import ceo_assistant
 from app.services.ceo_assistant import (
     SYSTEM_INSTRUCTION,
@@ -16,7 +17,7 @@ from app.services.ceo_assistant import (
     model_answer_is_safe,
     small_talk_reply,
 )
-from app.services.ceo_queries import answer_business_question
+from app.services.ceo_queries import answer_business_question, take_question_evidence
 
 
 def test_chat_status_and_conversation_crud(client: TestClient, monkeypatch) -> None:
@@ -94,6 +95,8 @@ def test_executive_snapshot_uses_database(session: Session) -> None:
     assert snapshot["sumber"] == "database operasional MYMARKET (read-only)"
     assert "30_hari_terakhir" in snapshot["ringkasan"]
     assert snapshot["persediaan"]["produk_aktif"] > 0
+    assert snapshot["stok_terbanyak"]
+    assert snapshot["stok_tersedikit"]
     assert isinstance(snapshot["produk_teratas_30_hari"], list)
     assert isinstance(snapshot["performa_produk_30_hari"], list)
     assert isinstance(snapshot["transaksi_terbaru"], list)
@@ -262,3 +265,59 @@ def test_product_profit_reply_uses_exact_database_snapshot(
     assert "Rp7.000" in answer
     assert transaction_answer is not None
     assert "Indomie Mi Goreng" in transaction_answer
+
+
+def test_gemini_model_is_flash_38() -> None:
+    assert get_settings().gemini_model == "gemini-3.8-flash"
+
+
+def test_stock_ranking_is_not_treated_as_a_product_name(session: Session) -> None:
+    products = list(session.scalars(select(Product).where(Product.is_active.is_(True))).all())
+    leader = min(products, key=lambda item: item.name)
+    trailer = max(products, key=lambda item: item.name)
+    leader.stock = 500
+    trailer.stock = 0
+    trailer.warehouse_stock = 0
+    session.commit()
+
+    highest = answer_business_question(session, "stok produk terbanyak saat ini apa")
+    lowest = answer_business_question(session, "stok paling sedikit saat ini")
+    total = answer_business_question(session, "berapa total stok saat ini")
+    missing = answer_business_question(session, "stok produk zzqqqq berapa")
+    sellers = answer_business_question(session, "produk apa yang paling laris")
+
+    assert highest is not None
+    assert "belum ditemukan" not in highest.casefold()
+    assert leader.name in highest.split("Berikutnya")[0]
+    assert str(500 + leader.warehouse_stock) in highest
+    assert lowest is not None and trailer.name in lowest.split("Berikutnya")[0]
+    assert total is not None and "produk aktif" in total.casefold()
+    assert missing is not None and "belum ditemukan" in missing
+    assert sellers is not None and "belum ditemukan" not in sellers.casefold()
+    assert "jumlah terjual" in sellers or "belum ada penjualan" in sellers.casefold()
+
+
+def test_ambiguous_product_and_out_of_scope_stay_specific(session: Session) -> None:
+    ambiguous = answer_business_question(session, "stok indomie")
+    outside = answer_business_question(session, "siapa presiden indonesia")
+
+    assert ambiguous is not None and "belum spesifik" in ambiguous.casefold()
+    assert outside is not None and "di luar data operasional" in outside.casefold()
+
+
+def test_product_analysis_keeps_verified_numbers_for_the_model(
+    session: Session, monkeypatch
+) -> None:
+    monkeypatch.setattr(get_settings(), "gemini_api_key", "")
+    without_model = answer_business_question(session, "tolong analisis stok")
+    assert without_model is not None
+    assert "belum ditemukan" not in without_model.casefold()
+    assert "produk aktif" in without_model.casefold()
+
+    monkeypatch.setattr(get_settings(), "gemini_api_key", "test-key")
+    with_model = answer_business_question(session, "Analisis laba Indomie Original hari ini")
+    evidence = take_question_evidence()
+
+    assert with_model is None
+    assert evidence is not None
+    assert "Indomie" in evidence["ringkas"]

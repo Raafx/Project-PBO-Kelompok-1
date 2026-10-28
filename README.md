@@ -4,7 +4,8 @@ Workspace aplikasi kasir MYMARKET dengan frontend Next.js dan backend FastAPI.
 Data operasional disimpan di database MySQL/MariaDB `kasir-pbo`.
 
 **Baru belajar kodenya?** Mulai dari [PANDUAN_KODE.md](PANDUAN_KODE.md)
-untuk mencari file halaman, API, rumus laporan, dan model database.
+untuk mencari file halaman, API, rumus laporan, dan model database. Lihat juga
+visual class serta alur sistem di [UML_MYMARKET.md](UML_MYMARKET.md).
 
 ## Struktur
 
@@ -51,13 +52,18 @@ Akun role hasil seed memakai password `password`:
 - `gudang@gmail.com` — role Staf Gudang dengan menu stok, pembelian, dan supplier;
   login pertama menghubungkan Authenticator lalu diarahkan ke `/admin`.
 
+Admin dapat menambahkan perangkat Authenticator tanpa batas dari menu Pengaturan.
+Pembuatan QR baru wajib disahkan dengan kode dari perangkat yang sudah aktif, dan
+perangkat aktif terakhir tidak dapat dicabut.
+
 PIN supervisor demo tetap `123456`. Ganti password dan PIN sebelum aplikasi dipakai
 di luar lingkungan lokal.
 
 ## CEO Copilot
 
 Chatbot CEO menjawab pertanyaan angka langsung dari database MYMARKET: omzet menurut
-tanggal/periode, perbandingan, performa dan laba produk, rincian transaksi, serta stok.
+tanggal/periode, perbandingan, performa dan laba produk, rincian transaksi, serta stok
+total, terbanyak, tersedikit, atau menipis.
 Hitungannya memakai agregasi yang sama dengan laporan admin dan tetap berfungsi tanpa
 API key. Untuk pertanyaan analisis kualitatif, isi `GEMINI_API_KEY` di `back/.env` lalu
 restart backend. Gemini menerima ringkasan data yang dibatasi; API key hanya berada di

@@ -29,7 +29,7 @@ from app.services.ceo_assistant import (
     compact_model_snapshot,
     stream_gemini_answer,
 )
-from app.services.ceo_queries import answer_business_question
+from app.services.ceo_queries import answer_business_question, take_question_evidence
 
 logger = logging.getLogger(__name__)
 router = APIRouter(
@@ -115,17 +115,24 @@ def send_message(
     conversation = _conversation(session, conversation_id, actor.id)
     history = list(conversation.messages)
     direct_answer = answer_business_question(session, payload.message, history)
+    evidence = take_question_evidence()
     settings = get_settings()
     if direct_answer is None and not settings.gemini_api_key.strip():
         direct_answer = (
-            "Analisis strategis sementara tidak tersedia. Saya tetap bisa menjawab "
-            "pertanyaan angka tentang omzet, produk, stok, dan transaksi langsung "
-            "dari database MYMARKET."
+            evidence["ringkas"]
+            if evidence
+            else (
+                "Analisis strategis sementara tidak tersedia. Saya tetap bisa menjawab "
+                "pertanyaan angka tentang omzet, produk, stok, dan transaksi langsung "
+                "dari database MYMARKET."
+            )
         )
     answer_route = "database" if direct_answer is not None else "gemini"
     model_snapshot = None
     if direct_answer is None:
         model_snapshot = compact_model_snapshot(build_executive_snapshot(session))
+        if evidence:
+            model_snapshot["fakta_pertanyaan"] = evidence
     user_message = CeoChatMessage(
         session_id=conversation.id,
         role="user",
@@ -160,7 +167,12 @@ def send_message(
                     json.dumps({"type": "delta", "text": direct_answer}, ensure_ascii=False) + "\n"
                 )
             else:
-                async for part in stream_gemini_answer(payload.message, model_snapshot, history):
+                async for part in stream_gemini_answer(
+                    payload.message,
+                    model_snapshot or {},
+                    history,
+                    evidence["ringkas"] if evidence else None,
+                ):
                     answer_parts.append(part)
                     yield json.dumps({"type": "delta", "text": part}, ensure_ascii=False) + "\n"
             answer = "".join(answer_parts).strip()

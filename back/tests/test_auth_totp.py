@@ -13,6 +13,22 @@ def _current_code(secret: str, offset: int = 0) -> str:
     return _totp_code(secret, counter + offset)
 
 
+def _enroll_admin(client: TestClient) -> tuple[str, str]:
+    setup = client.post(
+        "/api/v1/auth/login",
+        json={"identity": "admin@gmail.com", "password": "password"},
+    ).json()
+    confirmed = client.post(
+        "/api/v1/auth/totp/setup/confirm",
+        json={
+            "challenge_token": setup["challenge_token"],
+            "code": _current_code(setup["totp_secret"]),
+        },
+    )
+    assert confirmed.status_code == 200
+    return confirmed.json()["access_token"], setup["totp_secret"]
+
+
 def test_cashier_login_never_requires_totp(
     client: TestClient,
     session: Session,
@@ -141,3 +157,109 @@ def test_admin_login_requires_totp_after_enrollment(client: TestClient) -> None:
     assert verified.status_code == 200
     assert verified.json()["status"] == "authenticated"
     assert verified.json()["access_token"]
+
+
+def test_admin_can_add_and_login_with_second_authenticator(client: TestClient) -> None:
+    access_token, _first_secret = _enroll_admin(client)
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    missing_current_code = client.post(
+        "/api/v1/auth/authenticator/devices",
+        headers=headers,
+        json={"name": "Tidak sah"},
+    )
+    assert missing_current_code.status_code == 422
+
+    wrong_current_code = "000000"
+    if wrong_current_code == _current_code(_first_secret):
+        wrong_current_code = "000001"
+    unauthorized = client.post(
+        "/api/v1/auth/authenticator/devices",
+        headers=headers,
+        json={"name": "Tidak sah", "current_code": wrong_current_code},
+    )
+    assert unauthorized.status_code == 401
+
+    created = client.post(
+        "/api/v1/auth/authenticator/devices",
+        headers=headers,
+        json={"name": "HP kerja", "current_code": _current_code(_first_secret)},
+    )
+    assert created.status_code == 201
+    setup = created.json()
+    assert setup["name"] == "HP kerja"
+    assert setup["is_active"] is False
+    assert setup["totp_secret"]
+    assert "HP%20kerja" in setup["provisioning_uri"]
+
+    invalid_code = "000000"
+    if invalid_code == _current_code(setup["totp_secret"]):
+        invalid_code = "000001"
+    invalid = client.post(
+        f"/api/v1/auth/authenticator/devices/{setup['id']}/confirm",
+        headers=headers,
+        json={"code": invalid_code},
+    )
+    assert invalid.status_code == 401
+
+    confirmed = client.post(
+        f"/api/v1/auth/authenticator/devices/{setup['id']}/confirm",
+        headers=headers,
+        json={"code": _current_code(setup["totp_secret"])},
+    )
+    assert confirmed.status_code == 200
+    assert confirmed.json()["is_active"] is True
+
+    devices = client.get("/api/v1/auth/authenticator/devices", headers=headers)
+    assert devices.status_code == 200
+    assert len(devices.json()) == 2
+    assert all(device["is_active"] for device in devices.json())
+
+    challenge = client.post(
+        "/api/v1/auth/login",
+        json={"identity": "admin@gmail.com", "password": "password"},
+    ).json()
+    login = client.post(
+        "/api/v1/auth/totp/verify",
+        json={
+            "challenge_token": challenge["challenge_token"],
+            "code": _current_code(setup["totp_secret"], offset=1),
+        },
+    )
+    assert login.status_code == 200
+    assert login.json()["status"] == "authenticated"
+
+
+def test_authenticator_has_no_device_limit_and_keeps_last_active_device(
+    client: TestClient,
+) -> None:
+    access_token, _secret = _enroll_admin(client)
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    for number in range(1, 13):
+        response = client.post(
+            "/api/v1/auth/authenticator/devices",
+            headers=headers,
+            json={
+                "name": f"Perangkat cadangan {number}",
+                "current_code": _current_code(_secret),
+            },
+        )
+        assert response.status_code == 201
+
+    devices = client.get("/api/v1/auth/authenticator/devices", headers=headers).json()
+    assert len(devices) == 13
+    active_device = next(device for device in devices if device["is_active"])
+
+    cannot_remove_last = client.delete(
+        f"/api/v1/auth/authenticator/devices/{active_device['id']}",
+        headers=headers,
+    )
+    assert cannot_remove_last.status_code == 409
+
+    pending_device = next(device for device in devices if not device["is_active"])
+    removed_pending = client.delete(
+        f"/api/v1/auth/authenticator/devices/{pending_device['id']}",
+        headers=headers,
+    )
+    assert removed_pending.status_code == 204

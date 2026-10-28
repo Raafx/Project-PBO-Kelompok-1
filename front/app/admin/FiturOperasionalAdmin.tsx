@@ -53,6 +53,7 @@ import {
   type StockMovement,
 } from "../api";
 import PilihanCari from "../PilihanCari";
+import PerangkatAuthenticator from "./PerangkatAuthenticator";
 
 export type TabOperasional =
   | "cashier"
@@ -2076,6 +2077,9 @@ export default function FiturOperasionalAdmin({
                 </Button>
               </Form>
             </FieldCard>
+          </Col>
+          <Col xl={4}>
+            <PerangkatAuthenticator />
           </Col>
           <Col xl={8}>
             <Card>

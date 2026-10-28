@@ -4,7 +4,7 @@ Endpoint 1 mengisi pilihan produk. Endpoint 2 menghitung grafik satu produk.
 Riwayat transaksinya memakai endpoint `/admin/sales` dengan filter `product_id`.
 """
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -17,6 +17,7 @@ from app.models import Product, Sale, SaleItem
 from app.schemas import (
     ReportProductAnalysisRead,
     ReportProductDaily,
+    ReportProductMonthly,
     ReportProductOption,
     ReportProductPerformance,
 )
@@ -25,6 +26,35 @@ from app.services.reporting import product_performance
 
 router = APIRouter(prefix="/admin", tags=["Analisis Produk"])
 DbSession = Annotated[Session, Depends(get_db)]
+
+
+def _ringkasan_kosong(produk: Product) -> ReportProductPerformance:
+    return ReportProductPerformance(
+        product_id=produk.id,
+        barcode=produk.barcode,
+        name=produk.name,
+        category=produk.category,
+        image_url=produk.image_url,
+        transaction_count=0,
+        quantity=0,
+        gross_revenue=0,
+        discount=0,
+        net_revenue=0,
+        cost_of_goods=0,
+        gross_profit=0,
+        margin_percentage=0,
+        average_unit_price=0,
+    )
+
+
+def _awal_bulan(hari: date) -> date:
+    return hari.replace(day=1)
+
+
+def _bulan_berikutnya(hari: date) -> date:
+    if hari.month == 12:
+        return date(hari.year + 1, 1, 1)
+    return date(hari.year, hari.month + 1, 1)
 
 
 @router.get(
@@ -68,22 +98,41 @@ def laporan_analisis_produk(
         ringkasan = ReportProductPerformance(**hasil[0])
     else:
         # Produk tetap bisa dipilih meskipun penjualan pada bulan itu masih nol.
-        ringkasan = ReportProductPerformance(
-            product_id=produk.id,
-            barcode=produk.barcode,
-            name=produk.name,
-            category=produk.category,
-            image_url=produk.image_url,
-            transaction_count=0,
-            quantity=0,
-            gross_revenue=0,
-            discount=0,
-            net_revenue=0,
-            cost_of_goods=0,
-            gross_profit=0,
-            margin_percentage=0,
-            average_unit_price=0,
+        ringkasan = _ringkasan_kosong(produk)
+
+    # Satu baris per bulan membuat perbandingan tetap konsisten dengan ringkasan.
+    perbandingan_bulanan: list[ReportProductMonthly] = []
+    bulan = _awal_bulan(awal)
+    while bulan <= akhir:
+        awal_bagian = max(awal, bulan)
+        akhir_bulan = _bulan_berikutnya(bulan)
+        akhir_bagian = min(akhir + timedelta(days=1), akhir_bulan)
+        hasil_bulan = product_performance(
+            session,
+            datetime.combine(awal_bagian, datetime.min.time()),
+            datetime.combine(akhir_bagian, datetime.min.time()),
+            product_id,
         )
+        data_bulan = (
+            ReportProductPerformance(**hasil_bulan[0])
+            if hasil_bulan
+            else _ringkasan_kosong(produk)
+        )
+        perbandingan_bulanan.append(
+            ReportProductMonthly(
+                month=bulan,
+                transaction_count=data_bulan.transaction_count,
+                quantity=data_bulan.quantity,
+                gross_revenue=data_bulan.gross_revenue,
+                discount=data_bulan.discount,
+                net_revenue=data_bulan.net_revenue,
+                cost_of_goods=data_bulan.cost_of_goods,
+                gross_profit=data_bulan.gross_profit,
+                margin_percentage=data_bulan.margin_percentage,
+                average_unit_price=data_bulan.average_unit_price,
+            )
+        )
+        bulan = akhir_bulan
 
     kolom_hari = func.date(Sale.created_at).label("hari")
     baris_harian = session.execute(
@@ -130,4 +179,5 @@ def laporan_analisis_produk(
         date_to=akhir,
         product=ringkasan,
         daily_sales=grafik,
+        monthly_comparison=perbandingan_bulanan,
     )

@@ -1,5 +1,8 @@
 # Peta Kode MYMARKET
 
+Visual hubungan class, use case, sequence, state, dan activity diagram tersedia
+di [UML_MYMARKET.md](UML_MYMARKET.md).
+
 Panduan ini menunjukkan file mana yang perlu dibuka saat kamu ingin belajar atau
 mengubah sebuah halaman. Frontend memakai **Next.js + TypeScript/TSX** yang berjalan
 di Node.js. Backend memakai **Python + FastAPI**. Data disimpan oleh SQLAlchemy
@@ -32,7 +35,8 @@ menemukan halaman.
 | Riwayat Penjualan dan Laporan Bisnis | `front/app/admin/PenjualanDanLaporan.tsx` | `back/app/api/laporan_penjualan.py` (`/admin/sales`, `/admin/reports/sales`) |
 | Persediaan, Pembelian, Supplier | `front/app/admin/StokDanPembelian.tsx` | `back/app/api/admin.py` dan `back/app/api/operasional_toko.py` |
 | Hak Akses | `front/app/admin/PengaturanAkses.tsx` | `back/app/api/admin.py` (`/admin/roles`, `/admin/staff`) |
-| Modul shift, stok, pembelian, keuangan di admin | `front/app/admin/FiturOperasionalAdmin.tsx` | `back/app/api/operasional_toko.py` |
+| Modul shift, stok, pembelian, dan keuangan di admin | `front/app/admin/FiturOperasionalAdmin.tsx` | `back/app/api/operasional_toko.py` |
+| Perangkat Authenticator di Pengaturan | `front/app/admin/PerangkatAuthenticator.tsx` | `back/app/api/operasional_toko.py` (`/auth/authenticator/devices`) |
 | **Analisis Produk** | `front/app/admin/AnalisisProduk.tsx` | `back/app/api/analisis_produk.py` |
 | CEO Copilot `/ceo-chat` | `front/app/ceo-chat/HalamanChatCEO.tsx` | `back/app/api/ceo_chat.py` |
 
@@ -55,18 +59,22 @@ Baca file berikut dari atas ke bawah:
 
 1. `front/app/admin/page.tsx`: rute `/admin` menunjuk ke `HalamanAdmin.tsx`.
 2. `front/app/admin/HalamanAdmin.tsx`: sidebar memilih menu `product-analysis`.
-3. `front/app/admin/AnalisisProduk.tsx`: tiga bagian utama mengambil daftar
-   produk, mengambil ringkasan/grafik setelah produk dipilih, lalu mengambil
-   riwayat transaksi per halaman. Grafik tidak ditampilkan sebelum ada produk.
-4. `front/app/admin/apiAnalisisProduk.ts`: URL API yang dipanggil oleh halaman.
-5. `back/app/main.py`: mendaftarkan router Python.
-6. `back/app/api/analisis_produk.py`: mengembalikan pilihan produk dan menghitung
-   data harian satu produk. Produk tanpa penjualan tetap menghasilkan angka nol.
-7. `back/app/services/periode_laporan.py`: mengubah bulan/tanggal menjadi batas
+3. `front/app/admin/AnalisisProduk.tsx`: mengambil daftar produk, menerima bulan
+   awal dan akhir, menampilkan ringkasan seluruh periode, grafik harian, serta
+   riwayat transaksi. Grafik tidak ditampilkan sebelum ada produk.
+4. `front/app/admin/PerbandinganBulananProduk.tsx`: menampilkan grafik dan tabel
+   perbandingan omzet, HPP, laba, margin, serta perubahan dari bulan sebelumnya.
+5. `front/app/admin/apiAnalisisProduk.ts`: URL API dan bentuk data yang dipakai
+   oleh halaman Analisis Produk.
+6. `back/app/main.py`: mendaftarkan router Python.
+7. `back/app/api/analisis_produk.py`: mengembalikan pilihan produk lalu menghitung
+   data harian dan bulanan satu produk. Produk atau bulan tanpa penjualan tetap
+   menghasilkan angka nol agar perbandingannya tidak terputus.
+8. `back/app/services/periode_laporan.py`: mengubah bulan/tanggal menjadi batas
    waktu query database.
-8. `back/app/services/reporting.py`: menghitung jumlah, omzet, HPP, dan margin
+9. `back/app/services/reporting.py`: menghitung jumlah, omzet, HPP, dan margin
    produk dari transaksi selesai.
-9. `back/app/models.py`: bentuk tabel `Product`, `Sale`, dan `SaleItem` di database.
+10. `back/app/models.py`: bentuk tabel `Product`, `Sale`, dan `SaleItem` di database.
    `SaleItem.unit_cost` menyimpan HPP saat barang dijual, sehingga laporan lama
    tidak berubah ketika harga pokok master produk diperbarui.
 

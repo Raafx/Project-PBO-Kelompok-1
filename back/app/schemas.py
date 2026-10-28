@@ -554,11 +554,25 @@ class ReportProductDaily(BaseModel):
     gross_profit: int
 
 
+class ReportProductMonthly(BaseModel):
+    month: date
+    transaction_count: int
+    quantity: int
+    gross_revenue: int
+    discount: int
+    net_revenue: int
+    cost_of_goods: int
+    gross_profit: int
+    margin_percentage: float
+    average_unit_price: int
+
+
 class ReportProductAnalysisRead(BaseModel):
     date_from: date
     date_to: date
     product: ReportProductPerformance
     daily_sales: list[ReportProductDaily]
+    monthly_comparison: list[ReportProductMonthly]
 
 
 class AdminSalesReportRead(BaseModel):

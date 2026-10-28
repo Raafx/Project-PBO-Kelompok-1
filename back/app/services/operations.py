@@ -35,6 +35,7 @@ from app.models import (
     Store,
     Supplier,
     TotpChallenge,
+    TotpDevice,
 )
 from app.schemas_operations import (
     CashMovementCreate,
@@ -788,7 +789,10 @@ def _complete_login(session: Session, cashier: Cashier, audit_action: str) -> Lo
 
 
 def _create_totp_challenge(
-    session: Session, cashier: Cashier, purpose: str
+    session: Session,
+    cashier: Cashier,
+    purpose: str,
+    device_id: str | None = None,
 ) -> tuple[str, datetime]:
     created_at = now_utc()
     for existing in session.scalars(
@@ -804,11 +808,167 @@ def _create_totp_challenge(
         TotpChallenge(
             token_hash=token_hash(raw_token),
             cashier_id=cashier.id,
+            device_id=device_id,
             purpose=purpose,
             expires_at=expires_at,
         )
     )
     return raw_token, expires_at
+
+
+def _active_totp_devices(session: Session, cashier_id: str) -> list[TotpDevice]:
+    return list(
+        session.scalars(
+            select(TotpDevice)
+            .where(
+                TotpDevice.cashier_id == cashier_id,
+                TotpDevice.is_active.is_(True),
+            )
+            .order_by(TotpDevice.created_at, TotpDevice.id)
+        )
+    )
+
+
+def _new_totp_device(cashier: Cashier, name: str) -> TotpDevice:
+    return TotpDevice(
+        cashier_id=cashier.id,
+        name=name,
+        secret=generate_totp_secret(),
+        is_active=False,
+    )
+
+
+def _restore_legacy_totp_device(
+    session: Session, cashier: Cashier
+) -> TotpDevice | None:
+    """Ubah secret lama menjadi device bila migrasi data belum sempat menyalinnya."""
+
+    if not cashier.totp_enabled or not cashier.totp_secret:
+        return None
+    device = TotpDevice(
+        cashier_id=cashier.id,
+        name="Perangkat utama",
+        secret=cashier.totp_secret,
+        is_active=True,
+        enrolled_at=cashier.totp_enrolled_at or now_utc(),
+        last_counter=cashier.totp_last_counter,
+    )
+    session.add(device)
+    session.flush()
+    return device
+
+
+def list_totp_devices(session: Session, cashier: Cashier) -> list[TotpDevice]:
+    return list(
+        session.scalars(
+            select(TotpDevice)
+            .where(TotpDevice.cashier_id == cashier.id)
+            .order_by(TotpDevice.is_active.desc(), TotpDevice.created_at.desc())
+        )
+    )
+
+
+def create_totp_device(
+    session: Session,
+    cashier: Cashier,
+    name: str,
+    current_code: str | None,
+) -> tuple[TotpDevice, str]:
+    """Buat secret baru; jumlah perangkat sengaja tidak dibatasi."""
+
+    active_devices = _active_totp_devices(session, cashier.id)
+    if active_devices:
+        if not current_code:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                "Masukkan kode dari Authenticator yang sudah aktif",
+            )
+        authorized = any(
+            verify_totp_code(device.secret, current_code) is not None
+            for device in active_devices
+        )
+        if not authorized:
+            raise HTTPException(
+                status.HTTP_401_UNAUTHORIZED,
+                "Kode Authenticator aktif salah",
+            )
+
+    device = _new_totp_device(cashier, name)
+    session.add(device)
+    session.flush()
+    write_audit(
+        session,
+        cashier,
+        "auth.totp_device_created",
+        "totp_device",
+        device.id,
+        {"name": device.name},
+    )
+    session.commit()
+    session.refresh(device)
+    uri = totp_provisioning_uri(
+        device.secret,
+        f"{cashier.email or cashier.employee_code} ({device.name})",
+    )
+    return device, uri
+
+
+def confirm_totp_device(
+    session: Session, cashier: Cashier, device_id: str, code: str
+) -> TotpDevice:
+    device = session.get(TotpDevice, device_id)
+    if device is None or device.cashier_id != cashier.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Perangkat Authenticator tidak ditemukan")
+    if device.is_active:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Perangkat sudah aktif")
+
+    counter = verify_totp_code(device.secret, code)
+    if counter is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Kode Authenticator salah")
+
+    verified_at = now_utc()
+    device.is_active = True
+    device.enrolled_at = verified_at
+    device.last_used_at = verified_at
+    device.last_counter = counter
+    cashier.totp_required = True
+    cashier.totp_enabled = True
+    cashier.totp_enrolled_at = cashier.totp_enrolled_at or verified_at
+    cashier.totp_secret = cashier.totp_secret or device.secret
+    cashier.totp_last_counter = counter
+    write_audit(
+        session,
+        cashier,
+        "auth.totp_device_enrolled",
+        "totp_device",
+        device.id,
+        {"name": device.name},
+    )
+    session.commit()
+    session.refresh(device)
+    return device
+
+
+def delete_totp_device(session: Session, cashier: Cashier, device_id: str) -> None:
+    device = session.get(TotpDevice, device_id)
+    if device is None or device.cashier_id != cashier.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Perangkat Authenticator tidak ditemukan")
+    if device.is_active and len(_active_totp_devices(session, cashier.id)) <= 1:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Perangkat aktif terakhir tidak dapat dihapus",
+        )
+
+    write_audit(
+        session,
+        cashier,
+        "auth.totp_device_deleted",
+        "totp_device",
+        device.id,
+        {"name": device.name, "active": device.is_active},
+    )
+    session.delete(device)
+    session.commit()
 
 
 def authenticate(session: Session, identity: str, password: str) -> LoginRead:
@@ -830,10 +990,37 @@ def authenticate(session: Session, identity: str, password: str) -> LoginRead:
         session.commit()
         return result
 
-    if not cashier.totp_secret:
-        cashier.totp_secret = generate_totp_secret()
-    purpose = "login" if cashier.totp_enabled else "setup"
-    challenge_token, expires_at = _create_totp_challenge(session, cashier, purpose)
+    active_devices = _active_totp_devices(session, cashier.id)
+    if not active_devices:
+        restored = _restore_legacy_totp_device(session, cashier)
+        if restored is not None:
+            active_devices = [restored]
+
+    setup_device: TotpDevice | None = None
+    if active_devices:
+        purpose = "login"
+    else:
+        setup_device = session.scalar(
+            select(TotpDevice)
+            .where(
+                TotpDevice.cashier_id == cashier.id,
+                TotpDevice.is_active.is_(False),
+            )
+            .order_by(TotpDevice.created_at.desc())
+        )
+        if setup_device is None:
+            setup_device = _new_totp_device(cashier, "Perangkat utama")
+            session.add(setup_device)
+            session.flush()
+        cashier.totp_secret = setup_device.secret
+        purpose = "setup"
+
+    challenge_token, expires_at = _create_totp_challenge(
+        session,
+        cashier,
+        purpose,
+        setup_device.id if setup_device else None,
+    )
     write_audit(
         session,
         cashier,
@@ -852,11 +1039,14 @@ def authenticate(session: Session, identity: str, password: str) -> LoginRead:
         ),
         challenge_token=challenge_token,
         provisioning_uri=(
-            totp_provisioning_uri(cashier.totp_secret, cashier.email or cashier.employee_code)
-            if purpose == "setup"
+            totp_provisioning_uri(
+                setup_device.secret,
+                f"{cashier.email or cashier.employee_code} ({setup_device.name})",
+            )
+            if setup_device
             else None
         ),
-        totp_secret=cashier.totp_secret if purpose == "setup" else None,
+        totp_secret=setup_device.secret if setup_device else None,
         expires_at=expires_at,
     )
 
@@ -882,19 +1072,39 @@ def verify_totp_challenge(
             "Sesi Authenticator tidak valid atau kedaluwarsa",
         )
     cashier = session.get(Cashier, challenge.cashier_id)
-    if cashier is None or not cashier.is_active or not cashier.totp_secret:
+    if cashier is None or not cashier.is_active:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Akun tidak tersedia")
-    if expected_purpose == "login" and not cashier.totp_enabled:
-        raise HTTPException(status.HTTP_409_CONFLICT, "Authenticator belum diaktifkan")
-
-    counter = verify_totp_code(cashier.totp_secret, code, cashier.totp_last_counter)
-    if counter is None:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Kode Authenticator salah")
 
     verified_at = now_utc()
+    matched_device: TotpDevice | None = None
+    counter: int | None = None
+    if expected_purpose == "setup":
+        if not challenge.device_id:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Perangkat belum tersedia")
+        device = session.get(TotpDevice, challenge.device_id)
+        if device is None or device.cashier_id != cashier.id:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Perangkat tidak valid")
+        counter = verify_totp_code(device.secret, code, device.last_counter)
+        matched_device = device if counter is not None else None
+    else:
+        for device in _active_totp_devices(session, cashier.id):
+            matched_counter = verify_totp_code(device.secret, code, device.last_counter)
+            if matched_counter is not None:
+                matched_device = device
+                counter = matched_counter
+                break
+
+    if matched_device is None or counter is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Kode Authenticator salah")
+
     challenge.used_at = verified_at
+    matched_device.last_counter = counter
+    matched_device.last_used_at = verified_at
     cashier.totp_last_counter = counter
     if expected_purpose == "setup":
+        matched_device.is_active = True
+        matched_device.enrolled_at = verified_at
+        cashier.totp_secret = matched_device.secret
         cashier.totp_enabled = True
         cashier.totp_enrolled_at = verified_at
     result = _complete_login(

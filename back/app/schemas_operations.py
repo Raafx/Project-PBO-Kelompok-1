@@ -360,6 +360,39 @@ class TotpVerifyCreate(BaseModel):
     code: str = Field(pattern=r"^\d{6}$")
 
 
+class TotpDeviceCreate(BaseModel):
+    name: str = Field(min_length=2, max_length=80)
+    current_code: str | None = Field(default=None, pattern=r"^\d{6}$")
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str) -> str:
+        normalized = " ".join(value.split())
+        if len(normalized) < 2:
+            raise ValueError("Nama perangkat minimal 2 karakter")
+        return normalized
+
+
+class TotpDeviceConfirm(BaseModel):
+    code: str = Field(pattern=r"^\d{6}$")
+
+
+class TotpDeviceRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    name: str
+    is_active: bool
+    created_at: datetime
+    enrolled_at: datetime | None = None
+    last_used_at: datetime | None = None
+
+
+class TotpDeviceSetupRead(TotpDeviceRead):
+    provisioning_uri: str
+    totp_secret: str
+
+
 class ForgotPasswordCreate(BaseModel):
     email: str = Field(min_length=5, max_length=160, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 

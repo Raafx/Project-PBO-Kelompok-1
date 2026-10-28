@@ -22,18 +22,21 @@ API tersedia di `http://127.0.0.1:8000`, dokumentasi interaktif di
 Akun hasil seed memakai password awal `password`: `kasir@gmail.com` untuk Kasir,
 `admin@gmail.com` untuk akses penuh, dan `gudang@gmail.com` untuk Staf Gudang.
 Kasir masuk langsung tanpa TOTP. Admin dan Staf Gudang menghubungkan Authenticator
-melalui QR pada login pertama.
+melalui QR pada login pertama. Admin dapat menambah perangkat Authenticator tanpa
+batas dari menu Pengaturan; setiap perangkat memiliki secret dan anti-replay counter
+sendiri.
 
 ## CEO Copilot
 
 Pertanyaan angka dijawab dari database tanpa API key: omzet per periode, perbandingan,
-tanggal omzet tertinggi, performa/laba produk, stok, dan isi transaksi. Hasilnya memakai
+tanggal omzet tertinggi, performa/laba produk, stok total maupun stok terbanyak atau
+tersedikit, dan isi transaksi. Hasilnya memakai
 service agregasi yang sama dengan laporan admin. Untuk analisis kualitatif, isi API key
 Gemini di `back/.env`. Key hanya dibaca FastAPI dan tidak masuk bundle frontend.
 
 ```env
 GEMINI_API_KEY=isi_api_key_kamu
-GEMINI_MODEL=gemini-3.5-flash-lite
+GEMINI_MODEL=gemini-3.8-flash
 GEMINI_FALLBACK_MODEL=gemini-3.6-flash
 GEMINI_TIMEOUT_SECONDS=12
 GEMINI_RETRY_ATTEMPTS=1

@@ -80,6 +80,10 @@ from app.schemas_operations import (
     StockCountRead,
     StoreCreate,
     StoreProfileUpdate,
+    TotpDeviceConfirm,
+    TotpDeviceCreate,
+    TotpDeviceRead,
+    TotpDeviceSetupRead,
     TotpVerifyCreate,
     VoidSaleCreate,
 )
@@ -88,14 +92,18 @@ from app.services.operations import (
     add_cash_movement,
     authenticate,
     close_shift,
+    confirm_totp_device,
     create_batch,
     create_catalog_option,
     create_finance_entry,
     create_member,
     create_promotion,
     create_purchase_order,
+    create_totp_device,
     current_shift,
+    delete_totp_device,
     hash_secret,
+    list_totp_devices,
     now_utc,
     open_shift,
     perform_stock_count,
@@ -116,6 +124,7 @@ from app.services.products import create_product, update_product
 router = APIRouter(tags=["Business operations"])
 DbSession = Annotated[Session, Depends(get_db)]
 PosActor = Annotated[Cashier, Depends(require_permission("pos.access"))]
+SettingsActor = Annotated[Cashier, Depends(require_permission("admin.settings"))]
 
 
 def _ensure_own_cashier(actor: Cashier, cashier_code: str) -> None:
@@ -150,6 +159,65 @@ def verify_totp_login(payload: TotpVerifyCreate, session: DbSession) -> LoginRea
         payload.code,
         expected_purpose="login",
     )
+
+
+@router.get(
+    "/auth/authenticator/devices",
+    response_model=list[TotpDeviceRead],
+)
+def authenticator_devices(
+    session: DbSession,
+    actor: SettingsActor,
+) -> list[object]:
+    return list_totp_devices(session, actor)
+
+
+@router.post(
+    "/auth/authenticator/devices",
+    response_model=TotpDeviceSetupRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def add_authenticator_device(
+    payload: TotpDeviceCreate,
+    session: DbSession,
+    actor: SettingsActor,
+) -> TotpDeviceSetupRead:
+    device, provisioning_uri = create_totp_device(
+        session,
+        actor,
+        payload.name,
+        payload.current_code,
+    )
+    return TotpDeviceSetupRead(
+        **TotpDeviceRead.model_validate(device).model_dump(),
+        provisioning_uri=provisioning_uri,
+        totp_secret=device.secret,
+    )
+
+
+@router.post(
+    "/auth/authenticator/devices/{device_id}/confirm",
+    response_model=TotpDeviceRead,
+)
+def activate_authenticator_device(
+    device_id: str,
+    payload: TotpDeviceConfirm,
+    session: DbSession,
+    actor: SettingsActor,
+) -> object:
+    return confirm_totp_device(session, actor, device_id, payload.code)
+
+
+@router.delete(
+    "/auth/authenticator/devices/{device_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def remove_authenticator_device(
+    device_id: str,
+    session: DbSession,
+    actor: SettingsActor,
+) -> None:
+    delete_totp_device(session, actor, device_id)
 
 
 @router.get("/products/{product_id}/barcode.svg")

@@ -266,6 +266,20 @@ export type OperationsReport = {
 
 export type AccountProfile = AccessProfile & { email: string | null };
 
+export type AuthenticatorDevice = {
+  id: string;
+  name: string;
+  is_active: boolean;
+  created_at: string;
+  enrolled_at: string | null;
+  last_used_at: string | null;
+};
+
+export type AuthenticatorSetup = AuthenticatorDevice & {
+  provisioning_uri: string;
+  totp_secret: string;
+};
+
 export type LoginResult = {
   status: "authenticated" | "totp_setup_required" | "totp_required";
   access_token: string | null;
@@ -1257,6 +1271,36 @@ export function verifyTotpLogin(challengeToken: string, code: string) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ challenge_token: challengeToken, code }),
   });
+}
+
+export function loadAuthenticatorDevices() {
+  return apiRequest<AuthenticatorDevice[]>("/auth/authenticator/devices");
+}
+
+export function createAuthenticatorDevice(name: string, currentCode: string) {
+  return apiRequest<AuthenticatorSetup>("/auth/authenticator/devices", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, current_code: currentCode || null }),
+  });
+}
+
+export function confirmAuthenticatorDevice(deviceId: string, code: string) {
+  return apiRequest<AuthenticatorDevice>(
+    `/auth/authenticator/devices/${encodeURIComponent(deviceId)}/confirm`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code }),
+    },
+  );
+}
+
+export function deleteAuthenticatorDevice(deviceId: string) {
+  return apiRequest<void>(
+    `/auth/authenticator/devices/${encodeURIComponent(deviceId)}`,
+    { method: "DELETE" },
+  );
 }
 
 export function logoutAccount() {

@@ -16,6 +16,7 @@ import {
   type PilihanProduk,
 } from "./apiAnalisisProduk";
 import type { AdminSale } from "../api";
+import PerbandinganBulananProduk from "./PerbandinganBulananProduk";
 
 const ApexChart = dynamic(() => import("react-apexcharts"), { ssr: false });
 const formatAngka = new Intl.NumberFormat("id-ID");
@@ -37,18 +38,30 @@ function tanggal(teks: string) {
   });
 }
 
-function rentangBulan(bulan: string) {
-  const [tahun, nomorBulan] = bulan.split("-").map(Number);
+function rentangBulan(bulanAwal: string, bulanAkhir: string) {
+  const [tahun, nomorBulan] = bulanAkhir.split("-").map(Number);
   const hariTerakhir = new Date(tahun, nomorBulan, 0).getDate();
   return {
-    awal: `${bulan}-01`,
-    akhir: `${bulan}-${String(hariTerakhir).padStart(2, "0")}`,
+    awal: `${bulanAwal}-01`,
+    akhir: `${bulanAkhir}-${String(hariTerakhir).padStart(2, "0")}`,
   };
 }
 
 function bulanSekarang() {
   const hariIni = new Date();
   return `${hariIni.getFullYear()}-${String(hariIni.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function geserBulan(bulan: string, selisih: number) {
+  const [tahun, nomorBulan] = bulan.split("-").map(Number);
+  const hasil = new Date(tahun, nomorBulan - 1 + selisih, 1);
+  return `${hasil.getFullYear()}-${String(hasil.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function jumlahBulan(bulanAwal: string, bulanAkhir: string) {
+  const [tahunAwal, nomorAwal] = bulanAwal.split("-").map(Number);
+  const [tahunAkhir, nomorAkhir] = bulanAkhir.split("-").map(Number);
+  return (tahunAkhir - tahunAwal) * 12 + nomorAkhir - nomorAwal + 1;
 }
 
 function GrafikProduk({ harian }: { harian: HasilAnalisisProduk["daily_sales"] }) {
@@ -97,7 +110,8 @@ export default function AnalisisProduk() {
   const [daftarProduk, setDaftarProduk] = useState<PilihanProduk[]>([]);
   const [memuatDaftar, setMemuatDaftar] = useState(true);
   const [produkDipilih, setProdukDipilih] = useState("");
-  const [bulan, setBulan] = useState(bulanSekarang);
+  const [bulanAkhir, setBulanAkhir] = useState(bulanSekarang);
+  const [bulanAwal, setBulanAwal] = useState(() => geserBulan(bulanSekarang(), -2));
   const [analisis, setAnalisis] = useState<HasilAnalisisProduk | null>(null);
   const [memuatAnalisis, setMemuatAnalisis] = useState(false);
   const [pesanError, setPesanError] = useState("");
@@ -105,6 +119,13 @@ export default function AnalisisProduk() {
   const [transaksi, setTransaksi] = useState<AdminSale[]>([]);
   const [memuatTransaksi, setMemuatTransaksi] = useState(false);
   const [errorTransaksi, setErrorTransaksi] = useState("");
+  const banyakBulan = jumlahBulan(bulanAwal, bulanAkhir);
+  const pesanRentang =
+    banyakBulan < 1
+      ? "Bulan awal tidak boleh melewati bulan akhir."
+      : banyakBulan > 12
+        ? "Perbandingan maksimal 12 bulan dalam satu tampilan."
+        : "";
 
   // 1. Saat halaman dibuka, ambil daftar semua produk untuk pilihan yang bisa dicari.
   useEffect(() => {
@@ -120,9 +141,9 @@ export default function AnalisisProduk() {
 
   // 2. Grafik dan ringkasan baru diminta setelah pengguna memilih produk.
   useEffect(() => {
-    if (!produkDipilih) return;
+    if (!produkDipilih || pesanRentang) return;
     let dibatalkan = false;
-    const periode = rentangBulan(bulan);
+    const periode = rentangBulan(bulanAwal, bulanAkhir);
     const muat = async () => {
       setMemuatAnalisis(true);
       setPesanError("");
@@ -138,13 +159,13 @@ export default function AnalisisProduk() {
     };
     void muat();
     return () => { dibatalkan = true; };
-  }, [produkDipilih, bulan]);
+  }, [produkDipilih, bulanAwal, bulanAkhir, pesanRentang]);
 
   // 3. Riwayat transaksi dipisah karena jumlahnya bisa banyak dan perlu halaman.
   useEffect(() => {
-    if (!produkDipilih) return;
+    if (!produkDipilih || pesanRentang) return;
     let dibatalkan = false;
-    const periode = rentangBulan(bulan);
+    const periode = rentangBulan(bulanAwal, bulanAkhir);
     const muat = async () => {
       setMemuatTransaksi(true);
       setErrorTransaksi("");
@@ -165,9 +186,9 @@ export default function AnalisisProduk() {
     };
     void muat();
     return () => { dibatalkan = true; };
-  }, [produkDipilih, bulan, halamanTransaksi]);
+  }, [produkDipilih, bulanAwal, bulanAkhir, halamanTransaksi, pesanRentang]);
 
-  const periode = rentangBulan(bulan);
+  const periode = rentangBulan(bulanAwal, bulanAkhir);
   const ringkasan =
     analisis?.product.product_id === produkDipilih &&
     analisis.date_from === periode.awal &&
@@ -181,11 +202,11 @@ export default function AnalisisProduk() {
       <Card className="mb-3">
         <Card.Header>
           <h4 className="mb-1">Analisis Produk</h4>
-          <p className="text-muted mb-0">Cari produk, pilih bulan, lalu lihat grafik dan laba dari transaksi selesai.</p>
+          <p className="text-muted mb-0">Cari produk, pilih satu atau beberapa bulan, lalu bandingkan grafik dan laba dari transaksi selesai.</p>
         </Card.Header>
         <Card.Body>
           <Row className="g-3 align-items-end">
-            <Col lg={8}>
+            <Col lg={6}>
               <Form.Label htmlFor="pilih-produk-analisis">Produk</Form.Label>
               <PilihanCari
                 id="pilih-produk-analisis"
@@ -203,22 +224,59 @@ export default function AnalisisProduk() {
                 ))}
               </PilihanCari>
             </Col>
-            <Col lg={4}>
-              <Form.Label htmlFor="bulan-analisis">Bulan</Form.Label>
+            <Col lg={3}>
+              <Form.Label htmlFor="bulan-awal-analisis">Dari bulan</Form.Label>
               <Form.Control
-                id="bulan-analisis"
+                id="bulan-awal-analisis"
                 type="month"
-                value={bulan}
+                value={bulanAwal}
                 onChange={(event) => {
-                  if (event.target.value) { setBulan(event.target.value); setHalamanTransaksi(1); }
+                  if (event.target.value) {
+                    setBulanAwal(event.target.value);
+                    if (event.target.value > bulanAkhir) setBulanAkhir(event.target.value);
+                    setHalamanTransaksi(1);
+                  }
+                }}
+              />
+            </Col>
+            <Col lg={3}>
+              <Form.Label htmlFor="bulan-akhir-analisis">Sampai bulan</Form.Label>
+              <Form.Control
+                id="bulan-akhir-analisis"
+                type="month"
+                value={bulanAkhir}
+                onChange={(event) => {
+                  if (event.target.value) {
+                    setBulanAkhir(event.target.value);
+                    if (event.target.value < bulanAwal) setBulanAwal(event.target.value);
+                    setHalamanTransaksi(1);
+                  }
                 }}
               />
             </Col>
           </Row>
+          <div className="d-flex flex-wrap align-items-center gap-2 mt-3">
+            <small className="text-muted me-1">Rentang cepat:</small>
+            {[1, 3, 6, 12].map((jumlah) => (
+              <Button
+                key={jumlah}
+                type="button"
+                size="sm"
+                variant={banyakBulan === jumlah ? "primary" : "outline-secondary"}
+                onClick={() => {
+                  setBulanAwal(geserBulan(bulanAkhir, -(jumlah - 1)));
+                  setHalamanTransaksi(1);
+                }}
+              >
+                {jumlah} bulan
+              </Button>
+            ))}
+          </div>
           {memuatDaftar ? <small className="text-muted d-block mt-2">Memuat daftar produk...</small> : null}
         </Card.Body>
       </Card>
 
+      {pesanRentang ? <Alert variant="warning">{pesanRentang}</Alert> : null}
       {pesanError ? <Alert variant="danger">{pesanError}</Alert> : null}
       {!produkDipilih && !pesanError ? (
         <Card><Card.Body><PesanKosong judul="Pilih produk untuk melihat analisis" isi="Ketik nama atau barcode pada pilihan produk di atas." /></Card.Body></Card>
@@ -251,8 +309,10 @@ export default function AnalisisProduk() {
             </Card.Body>
           </Card>
 
+          <PerbandinganBulananProduk bulanan={analisis.monthly_comparison} />
+
           <Card className="mb-3">
-            <Card.Header><h5 className="mb-1">Grafik performa harian</h5><p className="text-muted mb-0">Omzet, HPP, dan laba/rugi produk terpilih.</p></Card.Header>
+            <Card.Header><h5 className="mb-1">Grafik performa harian</h5><p className="text-muted mb-0">Omzet, HPP, dan laba/rugi sepanjang rentang bulan terpilih.</p></Card.Header>
             <Card.Body>
               {ringkasan.quantity > 0 ? <GrafikProduk harian={analisis.daily_sales} /> :
                 <PesanKosong judul="Belum ada penjualan" isi="Produk ini belum terjual pada bulan yang dipilih." />}
