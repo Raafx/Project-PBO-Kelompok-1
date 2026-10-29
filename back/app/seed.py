@@ -127,6 +127,15 @@ def seed_database(session: Session) -> None:
         roles=roles,
         totp_required=True,
     )
+    _upsert_access_account(
+        session,
+        employee_code="SUPERADMIN",
+        full_name="Super Administrator",
+        email="superadmin@gmail.com",
+        role_code="OWNER",
+        roles=roles,
+        totp_required=False,
+    )
 
     member = session.scalar(select(Member).where(Member.phone == "081255449011"))
     if member is None:

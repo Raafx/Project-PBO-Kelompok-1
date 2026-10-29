@@ -49,6 +49,7 @@ Akun role hasil seed memakai password `password`:
 
 - `kasir@gmail.com` — role Kasir, langsung diarahkan ke `/pos` tanpa TOTP.
 - `admin@gmail.com` — akses admin penuh; login pertama menghubungkan Authenticator.
+- `superadmin@gmail.com` — akses admin penuh yang sama, tanpa TOTP.
 - `gudang@gmail.com` — role Staf Gudang dengan menu stok, pembelian, dan supplier;
   login pertama menghubungkan Authenticator lalu diarahkan ke `/admin`.
 

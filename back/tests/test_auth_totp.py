@@ -82,6 +82,20 @@ def test_seeded_role_accounts_use_requested_emails_and_password(client: TestClie
     assert "admin.stock" in warehouse.json()["permissions"]
     assert "pos.access" not in warehouse.json()["permissions"]
 
+    superadmin = client.post(
+        "/api/v1/auth/login",
+        json={"identity": "superadmin@gmail.com", "password": "password"},
+    )
+    assert superadmin.status_code == 200
+    body = superadmin.json()
+    assert body["status"] == "authenticated"
+    assert body["access_token"]
+    assert body["challenge_token"] is None
+    assert body["employee_code"] == "SUPERADMIN"
+    assert body["role_name"] == "Administrator"
+    assert "admin.settings" in body["permissions"]
+    assert "admin.ceo_chat" in body["permissions"]
+
 
 def test_admin_enrolls_authenticator_before_first_session(client: TestClient) -> None:
     login = client.post(
