@@ -71,7 +71,13 @@ function FormulirLogin() {
         expires_at: result.expires_at,
       }),
     );
-    router.replace(resolvePostLoginPath(result.permissions, requestedPath));
+    router.replace(
+      resolvePostLoginPath(
+        result.permissions,
+        requestedPath,
+        result.employee_code,
+      ),
+    );
   }
 
   function beginTotp(result: LoginResult) {

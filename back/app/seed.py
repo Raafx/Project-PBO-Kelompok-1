@@ -12,6 +12,7 @@ from app.models import (
     Member,
     Store,
     Supplier,
+    TotpDevice,
     Voucher,
 )
 from app.services.access import ensure_default_roles
@@ -63,6 +64,21 @@ def _upsert_access_account(
     return account
 
 
+def _clear_authenticator(session: Session, account: Cashier) -> None:
+    """Drop enrolled devices so the next login shows a fresh QR setup."""
+
+    account.totp_secret = None
+    account.totp_enabled = False
+    account.totp_enrolled_at = None
+    account.totp_last_counter = None
+    session.flush()
+    devices = session.scalars(
+        select(TotpDevice).where(TotpDevice.cashier_id == account.id)
+    ).all()
+    for device in devices:
+        session.delete(device)
+
+
 def seed_database(session: Session) -> None:
     roles = ensure_default_roles(session)
     store = session.scalar(select(Store).where(Store.code == "MY-001"))
@@ -109,7 +125,7 @@ def seed_database(session: Session) -> None:
         roles=roles,
         totp_required=False,
     )
-    _upsert_access_account(
+    admin = _upsert_access_account(
         session,
         employee_code="ADMIN",
         full_name="Administrator",
@@ -118,6 +134,7 @@ def seed_database(session: Session) -> None:
         roles=roles,
         totp_required=True,
     )
+    _clear_authenticator(session, admin)
     _upsert_access_account(
         session,
         employee_code="GUDANG",

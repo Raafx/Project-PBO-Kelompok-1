@@ -108,6 +108,28 @@ describe("login admin dengan Authenticator", () => {
     await waitFor(() => expect(mocks.replace).toHaveBeenCalledWith("/pos"));
   });
 
+  it("mengarahkan superadmin ke halaman utama", async () => {
+    const user = userEvent.setup();
+    mocks.loginAccount.mockResolvedValue({
+      status: "authenticated",
+      access_token: "superadmin-token",
+      challenge_token: null,
+      provisioning_uri: null,
+      totp_secret: null,
+      expires_at: "2026-10-09T02:00:00Z",
+      employee_code: "SUPERADMIN",
+      full_name: "Super Administrator",
+      role_name: "Administrator",
+      permissions: ["pos.access", "admin.overview", "admin.settings"],
+    });
+
+    render(<LoginPage />);
+    await user.type(screen.getByLabelText(/^password$/i), "password");
+    await user.click(screen.getByRole("button", { name: /lanjutkan/i }));
+
+    await waitFor(() => expect(mocks.replace).toHaveBeenCalledWith("/"));
+  });
+
   it("mengarahkan role gudang ke halaman admin terbatas", async () => {
     const user = userEvent.setup();
     mocks.loginAccount.mockResolvedValue({

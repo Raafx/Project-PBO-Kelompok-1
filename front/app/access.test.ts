@@ -36,6 +36,16 @@ describe("role-based access routing", () => {
     expect(canAccessArea(permissions, "admin")).toBe(false);
   });
 
+  it("mengarahkan superadmin ke halaman utama meski tujuan berikutnya adalah POS", () => {
+    expect(
+      resolvePostLoginPath(
+        ["pos.access", "admin.overview", "admin.settings"],
+        "/pos",
+        "SUPERADMIN",
+      ),
+    ).toBe("/");
+  });
+
   it("mempertahankan tujuan next yang memang diizinkan", () => {
     const permissions = ["admin.overview", "admin.ceo_chat"];
 

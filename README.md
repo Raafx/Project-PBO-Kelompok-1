@@ -48,8 +48,8 @@ frontend ke `http://127.0.0.1:8000/api/v1`.
 Akun role hasil seed memakai password `password`:
 
 - `kasir@gmail.com` — role Kasir, langsung diarahkan ke `/pos` tanpa TOTP.
-- `admin@gmail.com` — akses admin penuh; login pertama menghubungkan Authenticator.
-- `superadmin@gmail.com` — akses admin penuh yang sama, tanpa TOTP.
+- `admin@gmail.com` — akses admin penuh. Seed mengosongkan Authenticator, jadi login menampilkan QR pemasangan lagi.
+- `superadmin@gmail.com` — akses admin penuh yang sama, tanpa TOTP, lalu diarahkan ke `/`.
 - `gudang@gmail.com` — role Staf Gudang dengan menu stok, pembelian, dan supplier;
   login pertama menghubungkan Authenticator lalu diarahkan ke `/admin`.
 

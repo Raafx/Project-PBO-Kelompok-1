@@ -21,7 +21,8 @@ API tersedia di `http://127.0.0.1:8000`, dokumentasi interaktif di
 
 Akun hasil seed memakai password awal `password`: `kasir@gmail.com` untuk Kasir,
 `admin@gmail.com` untuk akses penuh, `superadmin@gmail.com` untuk akses penuh tanpa
-TOTP, dan `gudang@gmail.com` untuk Staf Gudang.
+TOTP yang masuk ke `/`, dan `gudang@gmail.com` untuk Staf Gudang.
+Seed mengosongkan Authenticator `admin@gmail.com` sehingga login berikutnya memasang QR baru.
 Kasir dan superadmin masuk langsung tanpa TOTP. Admin dan Staf Gudang menghubungkan Authenticator
 melalui QR pada login pertama. Admin dapat menambah perangkat Authenticator tanpa
 batas dari menu Pengaturan; setiap perangkat memiliki secret dan anti-replay counter

@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import AccessRole, Cashier
+from app.seed import seed_database
 from app.services.operations import TOTP_PERIOD_SECONDS, _totp_code, hash_secret
 
 
@@ -95,6 +96,32 @@ def test_seeded_role_accounts_use_requested_emails_and_password(client: TestClie
     assert body["role_name"] == "Administrator"
     assert "admin.settings" in body["permissions"]
     assert "admin.ceo_chat" in body["permissions"]
+
+
+def test_seed_resets_admin_authenticator_for_the_next_login(
+    client: TestClient,
+    session: Session,
+) -> None:
+    _token, old_secret = _enroll_admin(client)
+    enrolled = client.post(
+        "/api/v1/auth/login",
+        json={"identity": "admin@gmail.com", "password": "password"},
+    )
+    assert enrolled.json()["status"] == "totp_required"
+
+    seed_database(session)
+
+    fresh = client.post(
+        "/api/v1/auth/login",
+        json={"identity": "admin@gmail.com", "password": "password"},
+    )
+    assert fresh.status_code == 200
+    body = fresh.json()
+    assert body["status"] == "totp_setup_required"
+    assert body["challenge_token"]
+    assert body["totp_secret"]
+    assert body["totp_secret"] != old_secret
+    assert body["access_token"] is None
 
 
 def test_admin_enrolls_authenticator_before_first_session(client: TestClient) -> None:

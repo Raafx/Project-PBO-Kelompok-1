@@ -40,7 +40,9 @@ export function canAccessPath(
 export function resolvePostLoginPath(
   permissions: string[],
   requestedPath?: string | null,
+  employeeCode?: string | null,
 ): string {
+  if (employeeCode?.trim().toUpperCase() === "SUPERADMIN") return "/";
   if (
     requestedPath?.startsWith("/") &&
     !requestedPath.startsWith("//") &&
