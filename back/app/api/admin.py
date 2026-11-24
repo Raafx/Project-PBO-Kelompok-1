@@ -54,14 +54,13 @@ from app.services.access import (
 )
 from app.services.inventory import (
     adjust_stock,
-    create_supplier,
-    record_direct_purchase,
     stock_item,
     transfer_stock,
 )
 from app.services.operations import actor_from_token, write_audit
 from app.services.periode_laporan import waktu_bisnis
 from app.services.products import archive_product, create_product, update_product
+from app.services.purchasing import create_supplier, record_direct_purchase
 
 router = APIRouter(prefix="/admin", tags=["Admin inventory"])
 DbSession = Annotated[Session, Depends(get_db)]

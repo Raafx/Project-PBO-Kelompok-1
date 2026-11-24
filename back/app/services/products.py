@@ -35,7 +35,7 @@ def create_product(session: Session, payload: ProductCreate) -> Product:
         warehouse_stock=0,
     )
     session.add(product)
-    session.commit()
+    session.flush()
     session.refresh(product)
     return product
 
@@ -50,13 +50,13 @@ def update_product(session: Session, product: Product, payload: ProductUpdate) -
     )
     for field, value in values.items():
         setattr(product, field, value)
-    session.commit()
+    session.flush()
     session.refresh(product)
     return product
 
 
 def archive_product(session: Session, product: Product) -> Product:
     product.is_active = False
-    session.commit()
+    session.flush()
     session.refresh(product)
     return product

@@ -24,6 +24,8 @@ from app.schemas import (
     VoucherResult,
     VoucherValidate,
 )
+from app.services.payment_repository import SqlAlchemyVoucherFinder
+from app.services.payment_rules import payment_rules
 from app.services.sales import checkout, hold
 
 router = APIRouter(dependencies=[Depends(require_permission("pos.access"))])
@@ -101,7 +103,8 @@ def create_checkout(
     ] = None,
 ) -> Sale:
     _ensure_own_cashier(actor, payload.cashier_code)
-    return checkout(session, payload, idempotency_key)
+    rules = payment_rules(SqlAlchemyVoucherFinder(session))
+    return checkout(session, payload, idempotency_key, rules)
 
 
 @router.post("/sales/hold", response_model=SaleRead, status_code=status.HTTP_201_CREATED)
